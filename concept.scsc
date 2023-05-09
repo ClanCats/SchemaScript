@@ -1,0 +1,37 @@
+
+User {
+    .version = 2
+
+    // simple declartion a property "id" of type "int"
+    id: int
+
+    // a declaration with a local accessor and a nullable "int" type
+    avatar_image_id from avatarImageId: int?
+
+    avatar_image_id(avatarImageId): int?
+
+    avatar_image_id -> avatarImageId: int?
+
+    avatar_image_id @avatarImageId: int?
+
+    avatar_image?: {
+        data: Image
+    }
+
+    last_messages: Message[]
+}
+
+Image {
+    colors: int[]
+    proxy: {
+        s1x1: string
+    }
+}
+
+Message {
+    unseen: bool
+    context: {
+        type: string
+        data: Image|User
+    } 
+}
