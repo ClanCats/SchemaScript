@@ -5,6 +5,8 @@ namespace ClanCats\SchemaScript\CLI\Command;
 use ClanCats\SchemaScript\CLI\CommandInterface;
 use ClanCats\SchemaScript\CLI\GeneratorRegistryFactory;
 use ClanCats\SchemaScript\CLI\SchemaFileHelper;
+use ClanCats\SchemaScript\ErrorFormatter;
+use ClanCats\SchemaScript\Exception\GeneratorException;
 
 class GenerateCommand implements CommandInterface
 {
@@ -54,7 +56,12 @@ class GenerateCommand implements CommandInterface
         }
 
         $generator = $registry->get($generatorName);
-        $result = $generator->generate($definition);
+        try {
+            $result = $generator->generate($definition);
+        } catch (GeneratorException $e) {
+            fwrite(STDERR, ErrorFormatter::format($e) . "\n");
+            return 1;
+        }
 
         if ($toStdout) {
             foreach ($result->getFiles() as $filename => $content) {

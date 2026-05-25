@@ -6,11 +6,12 @@ use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
 use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Schema\Definition;
+use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
 use ClanCats\SchemaScript\Schema\Struct;
 use ClanCats\SchemaScript\Schema\StructProperty;
 use ClanCats\SchemaScript\Schema\Type;
 use ClanCats\SchemaScript\Schema\TypeAlias;
-use ClanCats\SchemaScript\Util\StringHelper;
+use ClanCats\SchemaScript\Workbench\Str;
 
 class TsTypesGenerator implements GeneratorInterface
 {
@@ -80,7 +81,7 @@ class TsTypesGenerator implements GeneratorInterface
         $lines = [];
 
         foreach ($pubAliases as $aliasName => $aliasData) {
-            $tsName = StringHelper::toPascalCase($aliasName);
+            $tsName = Str::toPascalCase($aliasName);
             $resolved = $aliasData->getResolvedType();
 
             if ($resolved instanceof Type && $resolved->isReference()) {
@@ -117,7 +118,12 @@ class TsTypesGenerator implements GeneratorInterface
         $lines[] = 'export interface ' . $struct->getName() . ' {';
 
         foreach ($struct->getProperties() as $prop) {
-            $lines[] = $this->generateProperty($ctx, $prop, $definition, '  ', $includeComments);
+            try {
+                $lines[] = $this->generateProperty($ctx, $prop, $definition, '  ', $includeComments);
+            } catch (GeneratorException $e) {
+                throw (new GeneratorException($e->getMessage(), 0, $e))
+                    ->setStructContext($struct->getName(), $prop->getName());
+            }
         }
 
         $lines[] = '}';
@@ -143,7 +149,7 @@ class TsTypesGenerator implements GeneratorInterface
         }
 
         $name = $ctx->mapName !== null
-            ? $definition->resolveMapKey($ctx->mapName, $prop->getName(), $prop->getAnnotations())
+            ? MappingStrategyResolver::resolve($definition,$ctx->mapName, $prop->getName(), $prop->getAnnotations())
             : $prop->getName();
         $optional = $prop->isOptional() ? '?' : '';
         $type = $this->resolveType($ctx, $prop->getType(), $definition, $indent);
@@ -193,7 +199,7 @@ class TsTypesGenerator implements GeneratorInterface
             }
             if (isset($ctx->pubStructNames[$refName])) {
                 $aliasName = $ctx->pubStructToAlias[$refName];
-                $tsName = StringHelper::toPascalCase($aliasName);
+                $tsName = Str::toPascalCase($aliasName);
                 $ctx->referencedPubTypes[$tsName] = true;
                 return $tsName;
             }
@@ -210,7 +216,7 @@ class TsTypesGenerator implements GeneratorInterface
                 return 'unknown';
             }
             if ($definition->isTypeAliasPublic($name)) {
-                $tsName = StringHelper::toPascalCase($name);
+                $tsName = Str::toPascalCase($name);
                 $ctx->referencedPubTypes[$tsName] = true;
                 return $tsName;
             }

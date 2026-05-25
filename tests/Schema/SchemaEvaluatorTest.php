@@ -1150,11 +1150,18 @@ SCSC;
         $this->assertNotNull($def->getStruct('Timestamps'));
     }
 
-    public function testCircularImportDoesNotLoop(): void
+    public function testCircularImportThrows(): void
     {
-        $def = $this->evaluateWithImports("import circular_a");
-        $this->assertNotNull($def->getStruct('ModelA'));
-        $this->assertNotNull($def->getStruct('ModelB'));
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Circular import detected');
+        $this->evaluateWithImports("import circular_a");
+    }
+
+    public function testCircularDirectSelfImportThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Circular import detected');
+        $this->evaluateWithImports("import circular_direct");
     }
 
     public function testImportWithoutNamespaceThrows(): void

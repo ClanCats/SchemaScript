@@ -3,6 +3,7 @@
 namespace ClanCats\SchemaScript\Importer;
 
 use ClanCats\SchemaScript\Importer\Samg\SamgImporter;
+use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
 use PHPUnit\Framework\TestCase;
 
 class SamgImporterTest extends TestCase
@@ -137,10 +138,10 @@ class SamgImporterTest extends TestCase
         $this->assertNotNull($profile);
         $props = $profile->getProperties();
 
-        $resolved = $definition->resolveMapKey('api', $props[0]->getName(), $props[0]->getAnnotations());
+        $resolved = MappingStrategyResolver::resolve($definition, 'api', $props[0]->getName(), $props[0]->getAnnotations());
         $this->assertSame('user_id', $resolved);
 
-        $resolved = $definition->resolveMapKey('self', $props[0]->getName(), $props[0]->getAnnotations());
+        $resolved = MappingStrategyResolver::resolve($definition, 'self', $props[0]->getName(), $props[0]->getAnnotations());
         $this->assertSame('userId', $resolved);
     }
 }

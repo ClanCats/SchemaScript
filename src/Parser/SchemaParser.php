@@ -3,6 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
+use ClanCats\SchemaScript\TokenType;
 use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Exception\ParserException;
 
@@ -69,7 +70,7 @@ abstract class SchemaParser
     protected function prepareTokens(array $tokens): array
     {
         return array_values(array_filter($tokens, function (T $token) {
-            return !$token->isType(T::TOKEN_SPACE);
+            return !$token->isType(TokenType::Space);
         }));
     }
 
@@ -93,7 +94,7 @@ abstract class SchemaParser
     }
 
     /**
-     * @param array<int> $types
+     * @param array<TokenType> $types
      */
     protected function skipTokenOfType(array $types): void
     {
@@ -125,7 +126,7 @@ abstract class SchemaParser
     /**
      * @return array<T>
      */
-    protected function getTokensUntil(int $type): array
+    protected function getTokensUntil(TokenType $type): array
     {
         $tokens = [];
 
@@ -143,7 +144,7 @@ abstract class SchemaParser
     protected function getTokensUntilClosingScope(): array
     {
         $openToken = $this->currentToken();
-        if ($openToken->isType(T::TOKEN_SCOPE_OPEN)) {
+        if ($openToken->isType(TokenType::ScopeOpen)) {
             $this->skipToken();
         }
 
@@ -153,9 +154,9 @@ abstract class SchemaParser
         while (!$this->parserIsDone()) {
             $token = $this->currentToken();
 
-            if ($token->isType(T::TOKEN_SCOPE_OPEN)) {
+            if ($token->isType(TokenType::ScopeOpen)) {
                 $depth++;
-            } elseif ($token->isType(T::TOKEN_SCOPE_CLOSE)) {
+            } elseif ($token->isType(TokenType::ScopeClose)) {
                 $depth--;
                 if ($depth === 0) {
                     $this->skipToken();
@@ -208,15 +209,15 @@ abstract class SchemaParser
     protected function parseDoubleColonSeparatedIdentifiers(string $firstPart): array
     {
         $parts = [$firstPart];
-        while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+        while (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::DoubleColon)) {
             $this->skipToken();
-            $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+            $parts[] = $this->expectCurrentType(TokenType::Identifier)->getValue();
             $this->skipToken();
         }
         return $parts;
     }
 
-    protected function expectCurrentType(int $type): T
+    protected function expectCurrentType(TokenType $type): T
     {
         $token = $this->currentToken();
 
@@ -232,9 +233,9 @@ abstract class SchemaParser
         $filename = $token->getFilename() ?? 'unknown';
         $e = new ParserException(
             sprintf(
-                'Unexpected token "%s" (%d) on line %d, column %d in file %s',
+                'Unexpected token "%s" (%s) on line %d, column %d in file %s',
                 $token->getValue(),
-                $token->getType(),
+                $token->getType()->name,
                 $token->getLine(),
                 $token->getColumn(),
                 $filename
@@ -257,6 +258,11 @@ abstract class SchemaParser
         }
 
         return new ParserException($message);
+    }
+
+    protected function capturePosition(BaseNode $node, T $token): void
+    {
+        $node->setSourcePosition($token->getLine(), $token->getColumn(), $token->getFilename());
     }
 
     protected function finish(): void

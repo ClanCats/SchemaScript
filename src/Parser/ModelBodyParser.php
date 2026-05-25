@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ModelDefinitionNode;
 use ClanCats\SchemaScript\Node\MetadataEntryNode;
 use ClanCats\SchemaScript\Node\PropertyNode;
@@ -33,7 +33,7 @@ class ModelBodyParser extends SchemaParser
     {
         $token = $this->currentToken();
 
-        if ($token->isType(T::TOKEN_COMMENT)) {
+        if ($token->isType(TokenType::Comment)) {
             $raw = $token->getValue();
             $text = preg_replace('/^\/\/\s?/', '', $raw);
             $this->pendingComments[] = $text;
@@ -41,19 +41,19 @@ class ModelBodyParser extends SchemaParser
             return;
         }
 
-        if ($token->isType(T::TOKEN_LINE)) {
+        if ($token->isType(TokenType::Line)) {
             $this->skipToken();
             return;
         }
 
-        if ($token->isType(T::TOKEN_ANNOTATION)) {
+        if ($token->isType(TokenType::Annotation)) {
             /** @var AnnotationNode $annotation */
             $annotation = $this->parseChild(AnnotationParser::class);
             $this->pendingAnnotations[] = $annotation;
             return;
         }
 
-        if ($token->isType(T::TOKEN_METADATA_KEY)) {
+        if ($token->isType(TokenType::MetadataKey)) {
             $this->pendingComments = [];
             if (!empty($this->pendingAnnotations)) {
                 $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
@@ -79,10 +79,10 @@ class ModelBodyParser extends SchemaParser
             return;
         }
 
-        if ($token->isType(T::TOKEN_IDENTIFIER)) {
+        if ($token->isType(TokenType::Identifier)) {
             // Disambiguate: property (name: type) vs child model (Name { ... })
             $next = $this->nextToken();
-            if ($next !== null && $next->isType(T::TOKEN_SCOPE_OPEN)) {
+            if ($next !== null && $next->isType(TokenType::ScopeOpen)) {
                 $this->pendingComments = [];
                 /** @var ModelDefinitionNode $childModel */
                 $childModel = $this->parseChild(ModelDefinitionParser::class);
@@ -117,12 +117,12 @@ class ModelBodyParser extends SchemaParser
         while (!$this->parserIsDone()) {
             $token = $this->currentToken();
 
-            if ($token->isType(T::TOKEN_LINE)) {
+            if ($token->isType(TokenType::Line)) {
                 $this->skipToken();
                 break;
             }
 
-            if ($token->isType(T::TOKEN_SCOPE_OPEN)) {
+            if ($token->isType(TokenType::ScopeOpen)) {
                 $tokens[] = $token;
                 $this->skipToken();
                 $depth = 1;
@@ -130,9 +130,9 @@ class ModelBodyParser extends SchemaParser
                 while (!$this->parserIsDone() && $depth > 0) {
                     $inner = $this->currentToken();
                     $tokens[] = $inner;
-                    if ($inner->isType(T::TOKEN_SCOPE_OPEN)) {
+                    if ($inner->isType(TokenType::ScopeOpen)) {
                         $depth++;
-                    } elseif ($inner->isType(T::TOKEN_SCOPE_CLOSE)) {
+                    } elseif ($inner->isType(TokenType::ScopeClose)) {
                         $depth--;
                     }
                     $this->skipToken();

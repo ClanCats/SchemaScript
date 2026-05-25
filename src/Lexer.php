@@ -3,7 +3,6 @@
 namespace ClanCats\SchemaScript;
 
 use ClanCats\SchemaScript\Exception\LexerException;
-use ClanCats\SchemaScript\Token as T;
 
 class Lexer
 {
@@ -22,50 +21,50 @@ class Lexer
     protected string $filename = 'unknown';
 
     /**
-     * @var array<string, int>
+     * @var array<string, TokenType>
      */
     protected array $tokenMap =
     [
         // metadata key: [version], [map:local], [types], [php.mappers]
-        "/\\G\\[([\\w:.]+)\\]/" => T::TOKEN_METADATA_KEY,
+        "/\\G\\[([\\w:.]+)\\]/" => TokenType::MetadataKey,
 
         // numbers
-        "/\\G\\d+(\\.\\d+)?/" => T::TOKEN_NUMBER,
+        "/\\G\\d+(\\.\\d+)?/" => TokenType::Number,
 
         // comments
-        "/\\G\\/\\/.*/" => T::TOKEN_COMMENT,
+        "/\\G\\/\\/.*/" => TokenType::Comment,
 
         // annotations
-        "/\\G@[\\w.]+/" => T::TOKEN_ANNOTATION,
+        "/\\G@[\\w.]+/" => TokenType::Annotation,
 
         // markup
-        "/\\G(\\r\\n|\\n|\\r)/" => T::TOKEN_LINE,
-        "/\\G[ \\t]+/" => T::TOKEN_SPACE,
+        "/\\G(\\r\\n|\\n|\\r)/" => TokenType::Line,
+        "/\\G[ \\t]+/" => TokenType::Space,
 
         // keywords
-        "/\\Gns(?=[\\s{])/" => T::TOKEN_KEYWORD_NS,
-        "/\\Gconst(?=[\\s\\n])/" => T::TOKEN_KEYWORD_CONST,
-        "/\\Gimport(?=[\\s\\n])/" => T::TOKEN_KEYWORD_IMPORT,
-        "/\\Gpub(?=[\\s\\n])/" => T::TOKEN_KEYWORD_PUB,
+        "/\\Gns(?=[\\s{])/" => TokenType::KeywordNs,
+        "/\\Gconst(?=[\\s\\n])/" => TokenType::KeywordConst,
+        "/\\Gimport(?=[\\s\\n])/" => TokenType::KeywordImport,
+        "/\\Gpub(?=[\\s\\n])/" => TokenType::KeywordPub,
 
         // multi-char symbols
-        "/\\G\\[\\]/" => T::TOKEN_ARRAY_SUFFIX,
-        "/\\G::/" => T::TOKEN_DOUBLE_COLON,
+        "/\\G\\[\\]/" => TokenType::ArraySuffix,
+        "/\\G::/" => TokenType::DoubleColon,
 
         // single-char symbols
-        "/\\G\\{/" => T::TOKEN_SCOPE_OPEN,
-        "/\\G\\}/" => T::TOKEN_SCOPE_CLOSE,
-        "/\\G\\(/" => T::TOKEN_PAREN_OPEN,
-        "/\\G\\)/" => T::TOKEN_PAREN_CLOSE,
-        "/\\G:/" => T::TOKEN_COLON,
-        "/\\G=/" => T::TOKEN_EQUAL,
-        "/\\G\\?/" => T::TOKEN_QUESTION,
-        "/\\G\\|/" => T::TOKEN_PIPE,
-        "/\\G,/" => T::TOKEN_COMMA,
-        "/\\G\\//" => T::TOKEN_SLASH,
+        "/\\G\\{/" => TokenType::ScopeOpen,
+        "/\\G\\}/" => TokenType::ScopeClose,
+        "/\\G\\(/" => TokenType::ParenOpen,
+        "/\\G\\)/" => TokenType::ParenClose,
+        "/\\G:/" => TokenType::Colon,
+        "/\\G=/" => TokenType::Equal,
+        "/\\G\\?/" => TokenType::Question,
+        "/\\G\\|/" => TokenType::Pipe,
+        "/\\G,/" => TokenType::Comma,
+        "/\\G\\//" => TokenType::Slash,
 
         // identifiers (must be last)
-        "/\\G[\\w]+/" => T::TOKEN_IDENTIFIER,
+        "/\\G[\\w]+/" => TokenType::Identifier,
     ];
 
     public function __construct(string $code, ?string $filename = null)
@@ -91,7 +90,7 @@ class Lexer
 
     /**
      * @throws LexerException
-     * @return T|false
+     * @return Token|false
      */
     protected function next()
     {
@@ -138,7 +137,7 @@ class Lexer
             $this->offset++;
             $this->column++;
 
-            return new T($startLine + 1, T::TOKEN_STRING, $string, $this->filename, $startColumn + 1);
+            return new Token($startLine + 1, TokenType::String, $string, $this->filename, $startColumn + 1);
         }
 
         foreach ($this->tokenMap as $regex => $token)
@@ -148,10 +147,10 @@ class Lexer
                 $tokenColumn = $this->column;
                 $matchLen = strlen($matches[0]);
 
-                if ($token === T::TOKEN_LINE) {
+                if ($token === TokenType::Line) {
                     $this->line++;
                     $this->column = 0;
-                } elseif ($token === T::TOKEN_COMMENT) {
+                } elseif ($token === TokenType::Comment) {
                     $newlines = substr_count($matches[0], "\n");
                     if ($newlines > 0) {
                         $this->line += $newlines;
@@ -166,7 +165,7 @@ class Lexer
 
                 $this->offset += $matchLen;
 
-                return new T($this->line + 1, $token, $matches[0], $this->filename, $tokenColumn + 1);
+                return new Token($this->line + 1, $token, $matches[0], $this->filename, $tokenColumn + 1);
             }
         }
 
@@ -197,7 +196,7 @@ class Lexer
         while ($token = $this->next())
         {
             $type = $token->getType();
-            if ($type === T::TOKEN_LINE && $lastType === T::TOKEN_LINE) {
+            if ($type === TokenType::Line && $lastType === TokenType::Line) {
                 continue;
             }
 

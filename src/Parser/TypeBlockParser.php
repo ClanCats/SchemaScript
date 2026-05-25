@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\TypeAliasNode;
 use ClanCats\SchemaScript\Node\AnnotationNode;
 use ClanCats\SchemaScript\Node\ScopeNode;
@@ -17,14 +17,14 @@ class TypeBlockParser extends SchemaParser
 
     protected function next(): void
     {
-        $this->expectCurrentType(T::TOKEN_METADATA_KEY);
+        $this->expectCurrentType(TokenType::MetadataKey);
         $this->skipToken();
 
-        if ($this->currentToken()->isType(T::TOKEN_EQUAL)) {
+        if ($this->currentToken()->isType(TokenType::Equal)) {
             $this->skipToken();
         }
 
-        $this->expectCurrentType(T::TOKEN_SCOPE_OPEN);
+        $this->expectCurrentType(TokenType::ScopeOpen);
         $bodyTokens = $this->getTokensUntilClosingScope();
 
         $this->parseBody($bodyTokens);
@@ -45,19 +45,19 @@ class TypeBlockParser extends SchemaParser
         while ($i < $count) {
             $token = $tokens[$i];
 
-            if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
+            if ($token->isType(TokenType::Line) || $token->isType(TokenType::Comment)) {
                 $i++;
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_ANNOTATION)) {
+            if ($token->isType(TokenType::Annotation)) {
                 $annotationTokens = [$token];
                 $i++;
 
-                if ($i < $count && $tokens[$i]->isType(T::TOKEN_PAREN_OPEN)) {
+                if ($i < $count && $tokens[$i]->isType(TokenType::ParenOpen)) {
                     while ($i < $count) {
                         $annotationTokens[] = $tokens[$i];
-                        if ($tokens[$i]->isType(T::TOKEN_PAREN_CLOSE)) {
+                        if ($tokens[$i]->isType(TokenType::ParenClose)) {
                             $i++;
                             break;
                         }
@@ -72,13 +72,13 @@ class TypeBlockParser extends SchemaParser
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_KEYWORD_PUB)) {
+            if ($token->isType(TokenType::KeywordPub)) {
                 $isPublic = true;
                 $i++;
-                while ($i < $count && $tokens[$i]->isType(T::TOKEN_LINE)) {
+                while ($i < $count && $tokens[$i]->isType(TokenType::Line)) {
                     $i++;
                 }
-                if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_IDENTIFIER)) {
+                if ($i >= $count || !$tokens[$i]->isType(TokenType::Identifier)) {
                     $e = new \ClanCats\SchemaScript\Exception\ParserException(
                         sprintf('Expected type alias name after "pub" on line %d, column %d in file %s', $token->getLine(), $token->getColumn(), $token->getFilename() ?? 'unknown')
                     );
@@ -88,21 +88,21 @@ class TypeBlockParser extends SchemaParser
                 $token = $tokens[$i];
             }
 
-            if ($token->isType(T::TOKEN_IDENTIFIER)) {
+            if ($token->isType(TokenType::Identifier)) {
                 $name = $token->getValue();
                 $i++;
 
                 // skip newlines between identifier and potential =
                 $peekIndex = $i;
-                while ($peekIndex < $count && $tokens[$peekIndex]->isType(T::TOKEN_LINE)) {
+                while ($peekIndex < $count && $tokens[$peekIndex]->isType(TokenType::Line)) {
                     $peekIndex++;
                 }
 
-                if ($peekIndex < $count && $tokens[$peekIndex]->isType(T::TOKEN_EQUAL)) {
+                if ($peekIndex < $count && $tokens[$peekIndex]->isType(TokenType::Equal)) {
                     $i = $peekIndex + 1; // skip past =
 
                     // skip newlines after =
-                    while ($i < $count && $tokens[$i]->isType(T::TOKEN_LINE)) {
+                    while ($i < $count && $tokens[$i]->isType(TokenType::Line)) {
                         $i++;
                     }
 
@@ -111,13 +111,13 @@ class TypeBlockParser extends SchemaParser
                     $braceDepth = 0;
                     while ($i < $count) {
                         $t = $tokens[$i];
-                        if ($t->isType(T::TOKEN_LINE) && $braceDepth === 0) {
+                        if ($t->isType(TokenType::Line) && $braceDepth === 0) {
                             $i++;
                             break;
                         }
-                        if ($t->isType(T::TOKEN_SCOPE_OPEN)) {
+                        if ($t->isType(TokenType::ScopeOpen)) {
                             $braceDepth++;
-                        } elseif ($t->isType(T::TOKEN_SCOPE_CLOSE)) {
+                        } elseif ($t->isType(TokenType::ScopeClose)) {
                             $braceDepth--;
                         }
                         $rhsTokens[] = $t;
@@ -129,6 +129,7 @@ class TypeBlockParser extends SchemaParser
                     $typeNode = $typeParser->parse();
 
                     $alias = new TypeAliasNode($name);
+                    $alias->setSourcePosition($token->getLine(), $token->getColumn(), $token->getFilename());
                     $alias->setTypeDefinition($typeNode);
                     $alias->setAnnotations($pendingAnnotations);
                     $alias->setIsPublic($isPublic);
@@ -140,7 +141,7 @@ class TypeBlockParser extends SchemaParser
 
                 // detect unknown keywords on the same line
                 // (e.g., "bla MessageType = ..." where "bla" is not a valid keyword)
-                if ($i < $count && $tokens[$i]->isType(T::TOKEN_IDENTIFIER)) {
+                if ($i < $count && $tokens[$i]->isType(TokenType::Identifier)) {
                     $e = new \ClanCats\SchemaScript\Exception\ParserException(
                         sprintf('Unknown keyword "%s" in type block on line %d, column %d in file %s', $name, $token->getLine(), $token->getColumn(), $token->getFilename() ?? 'unknown')
                     );
@@ -150,6 +151,7 @@ class TypeBlockParser extends SchemaParser
 
                 // bare declaration (no = follows)
                 $alias = new TypeAliasNode($name);
+                $alias->setSourcePosition($token->getLine(), $token->getColumn(), $token->getFilename());
                 $alias->setAnnotations($pendingAnnotations);
                 $alias->setIsPublic($isPublic);
                 $pendingAnnotations = [];

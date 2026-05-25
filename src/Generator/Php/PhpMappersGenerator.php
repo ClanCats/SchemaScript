@@ -6,9 +6,10 @@ use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
 use ClanCats\SchemaScript\Schema\Definition;
+use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
 use ClanCats\SchemaScript\Schema\Struct;
 use ClanCats\SchemaScript\Schema\Type;
-use ClanCats\SchemaScript\Util\StringHelper;
+use ClanCats\SchemaScript\Workbench\Str;
 
 class PhpMappersGenerator implements GeneratorInterface
 {
@@ -40,7 +41,7 @@ class PhpMappersGenerator implements GeneratorInterface
             if ($resolved instanceof Type && $resolved->isReference()) {
                 $structName = $resolved->getName();
                 if ($structName !== null) {
-                    $mapperName = StringHelper::toPascalCase($aliasName);
+                    $mapperName = Str::toPascalCase($aliasName);
                     $ctx->pubStructToMapper[$structName] = $mapperName;
                 }
             }
@@ -97,13 +98,18 @@ class PhpMappersGenerator implements GeneratorInterface
                 }
             }
 
-            $fromKey = $definition->resolveMapKey($ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
-            $toKey = $definition->resolveMapKey($ctx->mapTo ?? 'self', $prop->getName(), $prop->getAnnotations());
+            $fromKey = MappingStrategyResolver::resolve($definition,$ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
+            $toKey = MappingStrategyResolver::resolve($definition,$ctx->mapTo ?? 'self', $prop->getName(), $prop->getAnnotations());
             $readKey = ($direction === 'fromArray') ? $toKey : $fromKey;
             $writeKey = ($direction === 'fromArray') ? $fromKey : $toKey;
 
             $varAccess = "\$data['{$readKey}']";
-            $cast = $this->generateCast($ctx, $prop->getType(), $varAccess, $definition, $direction);
+            try {
+                $cast = $this->generateCast($ctx, $prop->getType(), $varAccess, $definition, $direction);
+            } catch (GeneratorException $e) {
+                throw (new GeneratorException($e->getMessage(), 0, $e))
+                    ->setStructContext($struct->getName(), $prop->getName());
+            }
 
             if ($prop->isOptional()) {
                 $lines[] = "        if (array_key_exists('{$readKey}', \$data)) {";
@@ -191,8 +197,8 @@ class PhpMappersGenerator implements GeneratorInterface
     {
         $entries = [];
         foreach ($struct->getProperties() as $prop) {
-            $fromKey = $definition->resolveMapKey($ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
-            $toKey = $definition->resolveMapKey($ctx->mapTo ?? 'self', $prop->getName(), $prop->getAnnotations());
+            $fromKey = MappingStrategyResolver::resolve($definition,$ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
+            $toKey = MappingStrategyResolver::resolve($definition,$ctx->mapTo ?? 'self', $prop->getName(), $prop->getAnnotations());
             $readKey = ($direction === 'fromArray') ? $toKey : $fromKey;
             $writeKey = ($direction === 'fromArray') ? $fromKey : $toKey;
 

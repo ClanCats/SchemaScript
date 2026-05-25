@@ -32,7 +32,7 @@ class Builder
         $tokens = (new Lexer($code, $schemaFile))->tokens();
         /** @var ScopeNode $scope */
         $scope = (new ScopeParser($tokens))->parse();
-        $definition = (new SchemaEvaluator($namespace))->evaluate($scope);
+        $definition = (new SchemaEvaluator($namespace))->evaluate($scope, $code, $schemaFile);
 
         $generateConfig = $definition->findMetadataValue('generate');
         if ($generateConfig === null) {

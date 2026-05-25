@@ -21,25 +21,25 @@ class ErrorReportingTest extends TestCase
 
     public function testTokenColumnDefault(): void
     {
-        $token = new Token(1, Token::TOKEN_IDENTIFIER, 'test');
+        $token = new Token(1, TokenType::Identifier, 'test');
         $this->assertSame(0, $token->getColumn());
     }
 
     public function testTokenColumnExplicit(): void
     {
-        $token = new Token(1, Token::TOKEN_IDENTIFIER, 'test', null, 5);
+        $token = new Token(1, TokenType::Identifier, 'test', null, 5);
         $this->assertSame(5, $token->getColumn());
     }
 
     public function testTokenColumnsOnSingleLine(): void
     {
         $tokens = (new Lexer('id: int'))->tokens();
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
 
         // "id" starts at column 1
         $this->assertSame(1, $identifiers[0]->getColumn());
         // ":" at column 3
-        $colon = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_COLON)));
+        $colon = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Colon)));
         $this->assertSame(3, $colon[0]->getColumn());
         // "int" at column 5
         $this->assertSame(5, $identifiers[1]->getColumn());
@@ -48,7 +48,7 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnResetsAfterNewline(): void
     {
         $tokens = (new Lexer("foo\nbar"))->tokens();
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
 
         $this->assertSame(1, $identifiers[0]->getColumn());
         $this->assertSame(1, $identifiers[0]->getLine());
@@ -59,7 +59,7 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnWithLeadingSpaces(): void
     {
         $tokens = (new Lexer("  name: string"))->tokens();
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
 
         // "name" starts at column 3 (after 2 spaces)
         $this->assertSame(3, $identifiers[0]->getColumn());
@@ -70,7 +70,7 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnWithTabs(): void
     {
         $tokens = (new Lexer("\tname"))->tokens();
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
 
         // tab is 1 byte, so "name" starts at column 2
         $this->assertSame(2, $identifiers[0]->getColumn());
@@ -80,7 +80,7 @@ class ErrorReportingTest extends TestCase
     {
         $code = "User {\n  id: int\n  name: string\n}";
         $tokens = (new Lexer($code))->tokens();
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
 
         // "User" at line 1, col 1
         $this->assertSame(1, $identifiers[0]->getLine());
@@ -133,7 +133,7 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnForString(): void
     {
         $tokens = (new Lexer("key = 'value'"))->tokens();
-        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_STRING)));
+        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::String)));
         // 'value' starts at column 7
         $this->assertSame(7, $strings[0]->getColumn());
     }
@@ -148,21 +148,21 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnForAnnotation(): void
     {
         $tokens = (new Lexer("  @deprecated"))->tokens();
-        $annotations = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_ANNOTATION)));
+        $annotations = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Annotation)));
         $this->assertSame(3, $annotations[0]->getColumn());
     }
 
     public function testTokenColumnForComment(): void
     {
         $tokens = (new Lexer('  // comment'))->tokens();
-        $comments = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_COMMENT)));
+        $comments = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Comment)));
         $this->assertSame(3, $comments[0]->getColumn());
     }
 
     public function testTokenColumnForMultilineString(): void
     {
         $tokens = (new Lexer("x = 'line1\nline2'"))->tokens();
-        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_STRING)));
+        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::String)));
         // string starts at column 5 on line 1
         $this->assertSame(5, $strings[0]->getColumn());
         $this->assertSame(1, $strings[0]->getLine());
@@ -171,7 +171,7 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnAfterMultilineString(): void
     {
         $tokens = (new Lexer("'line1\nline2'\nfoo"))->tokens();
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
         // "foo" is on line 3, column 1
         $this->assertSame(3, $identifiers[0]->getLine());
         $this->assertSame(1, $identifiers[0]->getColumn());
@@ -180,7 +180,7 @@ class ErrorReportingTest extends TestCase
     public function testTokenColumnForNumber(): void
     {
         $tokens = (new Lexer('[version] = 42'))->tokens();
-        $numbers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_NUMBER)));
+        $numbers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Number)));
         // "42" at column 13
         $this->assertSame(13, $numbers[0]->getColumn());
     }
@@ -199,7 +199,7 @@ class ErrorReportingTest extends TestCase
         $tokens = (new Lexer("const bar"))->tokens();
         $this->assertSame(1, $tokens[0]->getColumn()); // const
         // "bar" at col 7
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
         $this->assertSame(7, $identifiers[0]->getColumn());
     }
 
@@ -208,7 +208,7 @@ class ErrorReportingTest extends TestCase
         $tokens = (new Lexer("import scsc/base"))->tokens();
         $this->assertSame(1, $tokens[0]->getColumn()); // import
         // "scsc" at col 8
-        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)));
+        $identifiers = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)));
         $this->assertSame(8, $identifiers[0]->getColumn());
     }
 

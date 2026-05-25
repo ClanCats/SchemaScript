@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\PropertyNode;
 use ClanCats\SchemaScript\Node\Type\TypeNode;
 
@@ -15,17 +15,21 @@ class PropertyDefinitionParser extends SchemaParser
 
     protected ?TypeNode $type = null;
 
+    protected ?T $nameToken = null;
+
     protected function next(): void
     {
-        $this->name = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+        $nameToken = $this->expectCurrentType(TokenType::Identifier);
+        $this->name = $nameToken->getValue();
+        $this->nameToken = $nameToken;
         $this->skipToken();
 
-        if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_QUESTION)) {
+        if (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::Question)) {
             $this->isOptional = true;
             $this->skipToken();
         }
 
-        $this->expectCurrentType(T::TOKEN_COLON);
+        $this->expectCurrentType(TokenType::Colon);
         $this->skipToken();
 
         $remainingTokens = $this->getRemainingTokens(true);
@@ -63,6 +67,10 @@ class PropertyDefinitionParser extends SchemaParser
 
         $property = new PropertyNode($this->name, $this->type);
         $property->setIsOptional($this->isOptional);
+
+        if ($this->nameToken !== null) {
+            $this->capturePosition($property, $this->nameToken);
+        }
 
         return $property;
     }

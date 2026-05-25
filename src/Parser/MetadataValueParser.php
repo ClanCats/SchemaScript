@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ValueNode;
 use ClanCats\SchemaScript\Node\ReferenceNode;
 use ClanCats\SchemaScript\Node\MetadataEntryNode;
@@ -19,20 +19,20 @@ class MetadataValueParser extends SchemaParser
     {
         $token = $this->currentToken();
 
-        if ($token->isType(T::TOKEN_STRING) || $token->isType(T::TOKEN_NUMBER)) {
+        if ($token->isType(TokenType::String) || $token->isType(TokenType::Number)) {
             $this->result = ValueNode::fromToken($token);
             $this->skipToken();
             $this->finish();
             return;
         }
 
-        if ($token->isType(T::TOKEN_IDENTIFIER)) {
+        if ($token->isType(TokenType::Identifier)) {
             $this->result = $this->parseIdentifierValue();
             $this->finish();
             return;
         }
 
-        if ($token->isType(T::TOKEN_SCOPE_OPEN)) {
+        if ($token->isType(TokenType::ScopeOpen)) {
             $this->result = $this->parseScopeValue();
             $this->finish();
             return;
@@ -82,22 +82,22 @@ class MetadataValueParser extends SchemaParser
         for ($i = 0; $i < $count; $i++) {
             $token = $tokens[$i];
 
-            if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT) || $token->isType(T::TOKEN_SPACE)) {
+            if ($token->isType(TokenType::Line) || $token->isType(TokenType::Comment) || $token->isType(TokenType::Space)) {
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_METADATA_KEY)) {
+            if ($token->isType(TokenType::MetadataKey)) {
                 return false;
             }
-            if ($token->isType(T::TOKEN_ANNOTATION)) {
+            if ($token->isType(TokenType::Annotation)) {
                 return false;
             }
-            if ($token->isType(T::TOKEN_IDENTIFIER)) {
+            if ($token->isType(TokenType::Identifier)) {
                 $nextIdx = $this->findNextContentToken($tokens, $i + 1);
-                if ($nextIdx !== null && $tokens[$nextIdx]->isType(T::TOKEN_EQUAL)) {
+                if ($nextIdx !== null && $tokens[$nextIdx]->isType(TokenType::Equal)) {
                     return false;
                 }
-                if ($nextIdx === null || $tokens[$nextIdx]->isType(T::TOKEN_LINE) || $tokens[$nextIdx]->isType(T::TOKEN_SCOPE_CLOSE)) {
+                if ($nextIdx === null || $tokens[$nextIdx]->isType(TokenType::Line) || $tokens[$nextIdx]->isType(TokenType::ScopeClose)) {
                     return false;
                 }
             }
@@ -115,7 +115,7 @@ class MetadataValueParser extends SchemaParser
     {
         $count = count($tokens);
         for ($i = $startIdx; $i < $count; $i++) {
-            if (!$tokens[$i]->isType(T::TOKEN_LINE) && !$tokens[$i]->isType(T::TOKEN_COMMENT) && !$tokens[$i]->isType(T::TOKEN_SPACE)) {
+            if (!$tokens[$i]->isType(TokenType::Line) && !$tokens[$i]->isType(TokenType::Comment) && !$tokens[$i]->isType(TokenType::Space)) {
                 return $i;
             }
         }
@@ -133,7 +133,7 @@ class MetadataValueParser extends SchemaParser
         while (!$parser->parserIsDone()) {
             $token = $parser->currentToken();
 
-            if ($token->isType(T::TOKEN_COMMA) || $token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
+            if ($token->isType(TokenType::Comma) || $token->isType(TokenType::Line) || $token->isType(TokenType::Comment)) {
                 $parser->skipToken();
                 continue;
             }
@@ -159,23 +159,23 @@ class MetadataValueParser extends SchemaParser
         while (!$parser->parserIsDone()) {
             $token = $parser->currentToken();
 
-            if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
+            if ($token->isType(TokenType::Line) || $token->isType(TokenType::Comment)) {
                 $parser->skipToken();
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_ANNOTATION)) {
+            if ($token->isType(TokenType::Annotation)) {
                 /** @var AnnotationNode $annotation */
                 $annotation = $parser->parseChild(AnnotationParser::class);
                 $pendingAnnotations[] = $annotation;
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_METADATA_KEY)) {
+            if ($token->isType(TokenType::MetadataKey)) {
                 $key = $token->getValue();
                 $parser->skipToken();
 
-                $parser->expectCurrentType(T::TOKEN_EQUAL);
+                $parser->expectCurrentType(TokenType::Equal);
                 $parser->skipToken();
 
                 /** @var BaseNode $value */
@@ -186,11 +186,11 @@ class MetadataValueParser extends SchemaParser
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_IDENTIFIER)) {
+            if ($token->isType(TokenType::Identifier)) {
                 $key = $token->getValue();
                 $parser->skipToken();
 
-                if (!$parser->parserIsDone() && $parser->currentToken()->isType(T::TOKEN_EQUAL)) {
+                if (!$parser->parserIsDone() && $parser->currentToken()->isType(TokenType::Equal)) {
                     $parser->skipToken();
                     /** @var BaseNode $value */
                     $value = $parser->parseChild(self::class);

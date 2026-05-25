@@ -6,6 +6,7 @@ use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
 use ClanCats\SchemaScript\Schema\Definition;
+use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
 use ClanCats\SchemaScript\Schema\Struct;
 use ClanCats\SchemaScript\Schema\StructProperty;
 use ClanCats\SchemaScript\Schema\Type;
@@ -161,7 +162,7 @@ class PhpSamgGenerator implements GeneratorInterface
         $lines[] = '    {';
 
         foreach ($struct->getProperties() as $prop) {
-            $key = $definition->resolveMapKey($mapName, $prop->getName(), $prop->getAnnotations());
+            $key = MappingStrategyResolver::resolve($definition,$mapName, $prop->getName(), $prop->getAnnotations());
             $access = "\$array['{$key}']";
 
             $expr = $this->castExpression($prop->getType(), $access, $definition, 'localToInterface');
@@ -178,8 +179,8 @@ class PhpSamgGenerator implements GeneratorInterface
      */
     private function resolveKeys(PhpSamgContext $ctx, StructProperty $prop, Definition $definition, string $direction): array
     {
-        $localKey = $definition->resolveMapKey($ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
-        $interfaceKey = $definition->resolveMapKey($ctx->mapTo ?? 'api', $prop->getName(), $prop->getAnnotations());
+        $localKey = MappingStrategyResolver::resolve($definition,$ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
+        $interfaceKey = MappingStrategyResolver::resolve($definition,$ctx->mapTo ?? 'api', $prop->getName(), $prop->getAnnotations());
 
         if ($direction === 'localToInterface') {
             return [$localKey, $interfaceKey];

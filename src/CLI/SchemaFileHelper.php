@@ -56,9 +56,18 @@ class SchemaFileHelper
         try {
             $namespace = new SchemaNamespace();
             $namespace->importStdlib();
-            return (new SchemaEvaluator($namespace))->evaluate($scope);
+            return (new SchemaEvaluator($namespace))->evaluate($scope, $code, $filename);
         } catch (EvaluatorException $e) {
-            fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
+            if ($e->getSourceCode() === null && $e->getSourceLine() !== null) {
+                $e->setSourceContext(
+                    $e->getSourceLine(),
+                    $e->getSourceColumn() ?? 0,
+                    $e->getSourceFile() ?? $filename,
+                    $code,
+                    $e->getSourceLength()
+                );
+            }
+            fwrite(STDERR, ErrorFormatter::format($e) . "\n");
             return null;
         }
     }

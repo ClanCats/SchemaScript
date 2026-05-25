@@ -1,0 +1,5 @@
+import circular_direct
+
+ModelDirect {
+    id: int
+}

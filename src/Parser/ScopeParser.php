@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ScopeNode;
 use ClanCats\SchemaScript\Node\MetadataEntryNode;
 use ClanCats\SchemaScript\Node\ImportNode;
@@ -26,19 +26,19 @@ class ScopeParser extends SchemaParser
     {
         $token = $this->currentToken();
 
-        if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
+        if ($token->isType(TokenType::Line) || $token->isType(TokenType::Comment)) {
             $this->skipToken();
             return;
         }
 
-        if ($token->isType(T::TOKEN_KEYWORD_IMPORT)) {
+        if ($token->isType(TokenType::KeywordImport)) {
             /** @var ImportNode $import */
             $import = $this->parseChild(ImportParser::class);
             $this->scope->addImport($import);
             return;
         }
 
-        if ($token->isType(T::TOKEN_METADATA_KEY)) {
+        if ($token->isType(TokenType::MetadataKey)) {
             $key = $token->getValue();
 
             if ($key === 'type') {
@@ -56,29 +56,29 @@ class ScopeParser extends SchemaParser
             return;
         }
 
-        if ($token->isType(T::TOKEN_KEYWORD_NS)) {
+        if ($token->isType(TokenType::KeywordNs)) {
             /** @var NamespaceNode $namespace */
             $namespace = $this->parseChild(NamespaceParser::class);
             $this->scope->addNamespace($namespace);
             return;
         }
 
-        if ($token->isType(T::TOKEN_KEYWORD_CONST)) {
+        if ($token->isType(TokenType::KeywordConst)) {
             $this->skipToken();
 
-            $name = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+            $name = $this->expectCurrentType(TokenType::Identifier)->getValue();
             $this->skipToken();
 
             $constant = new ConstantNode($name);
 
-            if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_EQUAL)) {
+            if (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::Equal)) {
                 $this->skipToken();
                 $valueToken = $this->currentToken();
 
-                if ($valueToken->isType(T::TOKEN_STRING) || $valueToken->isType(T::TOKEN_NUMBER)) {
+                if ($valueToken->isType(TokenType::String) || $valueToken->isType(TokenType::Number)) {
                     $constant->setValue(ValueNode::fromToken($valueToken));
                     $this->skipToken();
-                } elseif ($valueToken->isType(T::TOKEN_IDENTIFIER)) {
+                } elseif ($valueToken->isType(TokenType::Identifier)) {
                     $identifier = $valueToken->getValue();
                     $this->skipToken();
 
@@ -97,7 +97,7 @@ class ScopeParser extends SchemaParser
             return;
         }
 
-        if ($token->isType(T::TOKEN_IDENTIFIER)) {
+        if ($token->isType(TokenType::Identifier)) {
             /** @var ModelDefinitionNode $model */
             $model = $this->parseChild(ModelDefinitionParser::class);
             $this->scope->addModel($model);

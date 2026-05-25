@@ -5,6 +5,7 @@ namespace ClanCats\SchemaScript\Tests;
 use PHPUnit\Framework\TestCase;
 use ClanCats\SchemaScript\Lexer;
 use ClanCats\SchemaScript\Token as T;
+use ClanCats\SchemaScript\TokenType;
 use ClanCats\SchemaScript\Parser\ScopeParser;
 use ClanCats\SchemaScript\Parser\MetadataParser;
 use ClanCats\SchemaScript\Parser\AnnotationParser;
@@ -43,7 +44,7 @@ class ParserTest extends TestCase
         $tokens = $this->tokenize($code);
 
         return array_values(array_filter($tokens, function (T $token) {
-            return !$token->isType(T::TOKEN_COMMENT) && !$token->isType(T::TOKEN_SPACE);
+            return !$token->isType(TokenType::Comment) && !$token->isType(TokenType::Space);
         }));
     }
 

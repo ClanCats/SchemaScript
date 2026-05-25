@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ModelDefinitionNode;
 
 class ModelDefinitionParser extends SchemaParser
@@ -12,21 +12,23 @@ class ModelDefinitionParser extends SchemaParser
 
     protected function next(): void
     {
-        if ($this->currentToken()->isType(T::TOKEN_LINE) || $this->currentToken()->isType(T::TOKEN_COMMENT)) {
+        if ($this->currentToken()->isType(TokenType::Line) || $this->currentToken()->isType(TokenType::Comment)) {
             $this->skipToken();
             return;
         }
 
-        $name = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+        $nameToken = $this->expectCurrentType(TokenType::Identifier);
+        $name = $nameToken->getValue();
         $this->skipToken();
 
-        $this->expectCurrentType(T::TOKEN_SCOPE_OPEN);
+        $this->expectCurrentType(TokenType::ScopeOpen);
         $bodyTokens = $this->getTokensUntilClosingScope();
 
         $bodyParser = new ModelBodyParser($bodyTokens);
         /** @var ModelDefinitionNode $model */
         $model = $bodyParser->parse();
         $model->setName($name);
+        $this->capturePosition($model, $nameToken);
 
         $this->model = $model;
         $this->finish();

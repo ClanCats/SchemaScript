@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\MetadataEntryNode;
 
 class MetadataParser extends SchemaParser
@@ -12,10 +12,10 @@ class MetadataParser extends SchemaParser
 
     protected function next(): void
     {
-        $key = $this->expectCurrentType(T::TOKEN_METADATA_KEY)->getValue();
+        $key = $this->expectCurrentType(TokenType::MetadataKey)->getValue();
         $this->skipToken();
 
-        $this->expectCurrentType(T::TOKEN_EQUAL);
+        $this->expectCurrentType(TokenType::Equal);
         $this->skipToken();
 
         /** @var BaseNode $value */

@@ -2,123 +2,76 @@
 
 namespace ClanCats\SchemaScript\Schema;
 
-use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ScopeNode;
 use ClanCats\SchemaScript\Node\ModelDefinitionNode;
-use ClanCats\SchemaScript\Node\PropertyNode;
-use ClanCats\SchemaScript\Node\MetadataEntryNode;
-use ClanCats\SchemaScript\Node\MetadataBlockNode;
-use ClanCats\SchemaScript\Node\MetadataListNode;
-use ClanCats\SchemaScript\Node\AnnotationNode;
 use ClanCats\SchemaScript\Node\ValueNode;
-use ClanCats\SchemaScript\Node\ReferenceNode;
 use ClanCats\SchemaScript\Node\TypeAliasNode;
 use ClanCats\SchemaScript\Node\NamespaceNode;
-use ClanCats\SchemaScript\Node\ConstantNode;
-use ClanCats\SchemaScript\Util\StringHelper;
-use ClanCats\SchemaScript\Node\Type\TypeNode;
 use ClanCats\SchemaScript\Node\Type\SimpleTypeNode;
-use ClanCats\SchemaScript\Node\Type\ArrayTypeNode;
-use ClanCats\SchemaScript\Node\Type\NullableTypeNode;
-use ClanCats\SchemaScript\Node\Type\UnionTypeNode;
-use ClanCats\SchemaScript\Node\Type\InlineObjectTypeNode;
-use ClanCats\SchemaScript\Node\Type\StringLiteralTypeNode;
-use ClanCats\SchemaScript\Lexer;
 use ClanCats\SchemaScript\SchemaNamespace;
-use ClanCats\SchemaScript\Parser\ScopeParser;
-use ClanCats\SchemaScript\Exception\EvaluatorException;
 
 class SchemaEvaluator
 {
-    /**
-     * @var array<string, Struct>
-     */
-    private array $structs = [];
+    use EvaluatorErrorTrait;
 
-    /**
-     * @var array<string, TypeAlias>
-     */
-    private array $typeAliasData = [];
+    private ImportResolver $importResolver;
 
-    /**
-     * @var array<string, array<string, mixed>>
-     */
-    private array $namespaces = [];
+    private ValueResolver $valueResolver;
 
-    /**
-     * @var array<string, true>
-     */
-    private array $importedFiles = [];
-
-    /**
-     * @var array<string, true>
-     */
-    private array $resolvingRefs = [];
-
-    /**
-     * @var array<string, string>
-     */
-    private array $identifierConstants = [];
-
-    /**
-     * @var array<string, ConstantNode>
-     */
-    private array $valueConstants = [];
-
-    private ?SchemaNamespace $schemaNamespace;
+    private TypeEvaluator $typeEvaluator;
 
     public function __construct(?SchemaNamespace $schemaNamespace = null)
     {
-        $this->schemaNamespace = $schemaNamespace;
+        $this->importResolver = new ImportResolver($schemaNamespace);
+        $this->valueResolver = new ValueResolver();
+        $this->typeEvaluator = new TypeEvaluator($this->valueResolver);
     }
 
-    public function evaluate(ScopeNode $scope): Definition
+    public function evaluate(ScopeNode $scope, ?string $sourceCode = null, ?string $filename = null): Definition
     {
-        $this->structs = [];
-        $this->typeAliasData = [];
-        $this->namespaces = [];
-        $this->importedFiles = [];
-        $this->resolvingRefs = [];
-        $this->identifierConstants = [];
-        $this->valueConstants = [];
+        $context = new EvaluationContext();
 
-        $this->processImports($scope);
+        if ($sourceCode !== null) {
+            $context->sourceCodeMap[$filename ?? ''] = $sourceCode;
+        }
 
-        // Pass 1: Discover all names (types + models) before validation
-        $rootScope = $this->discoverNames($scope, null, '');
+        $this->importResolver->processImports($scope, $context);
 
-        // Evaluate namespaces and metadata
-        $this->namespaces = $this->evaluateNamespaces($scope->getNamespaces());
+        $rootScope = $this->discoverNames($scope, null, '', $context);
 
-        // Process scope-level constants (after imports and name discovery)
-        $this->processScopeConstants($scope, $rootScope);
+        $this->evaluateNamespaces($scope->getNamespaces(), $context);
 
-        $metadata = $this->evaluateMetadata($scope->getMetadata());
+        $this->processScopeConstants($scope, $rootScope, $context);
 
-        // Evaluate type aliases (with resolved types)
-        $this->typeAliasData = $this->evaluateTypeAliases($scope->getTypeAliases(), $rootScope);
+        $metadata = $this->valueResolver->evaluateMetadata($scope->getMetadata(), $context);
 
-        // Check for collisions between type aliases and model names
+        $context->typeAliasData = $this->evaluateTypeAliases($scope->getTypeAliases(), $rootScope, $context);
+
         $collisions = array_intersect_key($rootScope->getLocalModelNames(), $rootScope->getLocalTypeAliases());
         if (!empty($collisions)) {
-            throw new EvaluatorException(sprintf(
-                'Type alias name collides with model name: "%s"',
-                implode('", "', array_keys($collisions))
-            ));
+            $collidingName = array_key_first($collisions);
+            $collidingAlias = null;
+            foreach ($scope->getTypeAliases() as $a) {
+                if ($a->getName() === $collidingName) {
+                    $collidingAlias = $a;
+                    break;
+                }
+            }
+            $this->throwEvaluatorError(
+                sprintf('Type alias name collides with model name: "%s"', implode('", "', array_keys($collisions))),
+                $collidingAlias,
+                $context
+            );
         }
 
-        // Pass 2: Evaluate all models
         foreach ($scope->getModels() as $model) {
-            $this->evaluateModel($model, $rootScope, '');
+            $this->evaluateModel($model, $rootScope, '', $context);
         }
 
-        return new Definition($metadata, $this->typeAliasData, $this->namespaces, $this->structs);
+        return new Definition($metadata, $context->typeAliasData, $context->namespaces, $context->structs);
     }
 
-    /**
-     * Pass 1: Recursively discover all type alias names and model names.
-     */
-    private function discoverNames(ScopeNode $scope, ?TypeScope $parentScope, string $namePrefix): TypeScope
+    private function discoverNames(ScopeNode $scope, ?TypeScope $parentScope, string $namePrefix, EvaluationContext $context): TypeScope
     {
         $typeScope = new TypeScope($parentScope);
 
@@ -130,7 +83,7 @@ class SchemaEvaluator
         foreach ($scope->getModels() as $model) {
             $name = $model->getName();
             if (isset($seenModels[$name])) {
-                throw new EvaluatorException(sprintf('Duplicate model definition: "%s"', $name));
+                $this->throwEvaluatorError(sprintf('Duplicate model definition: "%s"', $name), $model, $context);
             }
             $seenModels[$name] = true;
 
@@ -166,52 +119,29 @@ class SchemaEvaluator
     }
 
     /**
-     * @param array<MetadataEntryNode> $entryNodes
-     * @return array<MetadataEntry>
-     */
-    private function evaluateMetadata(array $entryNodes): array
-    {
-        $result = [];
-        foreach ($entryNodes as $node) {
-            $result[] = $this->resolveMetadataEntry($node);
-        }
-        return $result;
-    }
-
-    private function resolveMetadataEntry(MetadataEntryNode $node): MetadataEntry
-    {
-        $value = $node->getValue();
-        return new MetadataEntry(
-            $node->getKey(),
-            $value !== null ? $this->resolveValue($value) : null,
-            $this->evaluateAnnotations($node->getAnnotations()),
-        );
-    }
-
-    /**
      * @param array<TypeAliasNode> $aliasNodes
      * @return array<string, TypeAlias>
      */
-    private function evaluateTypeAliases(array $aliasNodes, TypeScope $scope): array
+    private function evaluateTypeAliases(array $aliasNodes, TypeScope $scope, EvaluationContext $context): array
     {
         $result = [];
         foreach ($aliasNodes as $alias) {
             $name = $alias->getName();
             if (isset($result[$name])) {
-                throw new EvaluatorException(sprintf('Duplicate type alias definition: "%s"', $name));
+                $this->throwEvaluatorError(sprintf('Duplicate type alias definition: "%s"', $name), $alias, $context);
             }
 
             $resolvedType = null;
             $typeDef = $alias->getTypeDefinition();
             if ($typeDef !== null) {
-                $resolvedType = $this->evaluateType($typeDef, $name, $scope);
+                $resolvedType = $this->typeEvaluator->evaluateType($typeDef, $name, $scope, $context);
             }
 
             $result[$name] = new TypeAlias(
                 $name,
                 $alias->isPublic(),
                 $resolvedType,
-                $this->evaluateAnnotations($alias->getAnnotations())
+                $this->valueResolver->evaluateAnnotations($alias->getAnnotations(), $context)
             );
         }
         return $result;
@@ -219,44 +149,42 @@ class SchemaEvaluator
 
     /**
      * @param array<NamespaceNode> $namespaceNodes
-     * @return array<string, array<string, mixed>>
      */
-    private function evaluateNamespaces(array $namespaceNodes): array
+    private function evaluateNamespaces(array $namespaceNodes, EvaluationContext $context): void
     {
         foreach ($namespaceNodes as $ns) {
-            $this->evaluateNamespaceRecursive($ns, '');
+            $this->evaluateNamespaceRecursive($ns, '', $context);
         }
-        return $this->namespaces;
     }
 
-    private function evaluateNamespaceRecursive(NamespaceNode $ns, string $prefix): void
+    private function evaluateNamespaceRecursive(NamespaceNode $ns, string $prefix, EvaluationContext $context): void
     {
         $fullName = $prefix !== '' ? $prefix . '::' . $ns->getName() : $ns->getName();
 
         if (!empty($ns->getConstants())) {
-            if (isset($this->namespaces[$fullName])) {
-                throw new EvaluatorException(sprintf('Duplicate namespace definition: "%s"', $fullName));
+            if (isset($context->namespaces[$fullName])) {
+                $this->throwEvaluatorError(sprintf('Duplicate namespace definition: "%s"', $fullName), $ns, $context);
             }
             $constants = [];
             foreach ($ns->getConstants() as $constant) {
                 $constName = $constant->getName();
                 if (isset($constants[$constName])) {
-                    throw new EvaluatorException(sprintf('Duplicate constant "%s" in namespace "%s"', $constName, $fullName));
+                    $this->throwEvaluatorError(sprintf('Duplicate constant "%s" in namespace "%s"', $constName, $fullName), $constant, $context);
                 }
                 $constValue = $constant->getValue();
                 $constants[$constName] = ($constant->hasValue() && $constValue !== null)
-                    ? $this->resolveValue($constValue)
+                    ? $this->valueResolver->resolveValue($constValue, $context)
                     : $fullName . '::' . $constName;
             }
-            $this->namespaces[$fullName] = $constants;
+            $context->namespaces[$fullName] = $constants;
         }
 
         foreach ($ns->getChildren() as $child) {
-            $this->evaluateNamespaceRecursive($child, $fullName);
+            $this->evaluateNamespaceRecursive($child, $fullName, $context);
         }
     }
 
-    private function processScopeConstants(ScopeNode $scope, TypeScope $rootScope): void
+    private function processScopeConstants(ScopeNode $scope, TypeScope $rootScope, EvaluationContext $context): void
     {
         foreach ($scope->getConstants() as $constant) {
             $name = $constant->getName();
@@ -272,285 +200,34 @@ class SchemaEvaluator
                     $rootScope->registerTypeAlias($aliasNode);
                 }
 
-                $this->identifierConstants[$name] = $identifier;
+                $context->identifierConstants[$name] = $identifier;
             } elseif ($value !== null) {
-                $this->valueConstants[$name] = $constant;
+                $context->valueConstants[$name] = $constant;
             }
         }
     }
 
-    private function evaluateModel(ModelDefinitionNode $model, TypeScope $parentScope, string $namePrefix): void
+    private function evaluateModel(ModelDefinitionNode $model, TypeScope $parentScope, string $namePrefix, EvaluationContext $context): void
     {
         $name = $namePrefix !== '' ? $namePrefix . '/' . $model->getName() : $model->getName();
 
-        // Create child scope if model has scoped types or child models
         $scope = $parentScope;
         if (!empty($model->getTypeAliases()) || !empty($model->getChildModels())) {
             $scope = $this->discoverModelNames($model, $parentScope, $name);
 
-            // Evaluate scoped type aliases
-            $scopedAliases = $this->evaluateTypeAliases($model->getTypeAliases(), $scope);
+            $scopedAliases = $this->evaluateTypeAliases($model->getTypeAliases(), $scope, $context);
             foreach ($scopedAliases as $aliasName => $aliasData) {
-                $this->typeAliasData[$aliasName] = $aliasData;
+                $context->typeAliasData[$aliasName] = $aliasData;
             }
         }
 
-        $metadata = $this->evaluateMetadata($model->getMetadata());
-        $properties = $this->evaluateProperties($model->getProperties(), $name, $scope);
+        $metadata = $this->valueResolver->evaluateMetadata($model->getMetadata(), $context);
+        $properties = $this->typeEvaluator->evaluateProperties($model->getProperties(), $name, $scope, $context);
 
-        $this->structs[$name] = new Struct($name, false, $properties, $metadata);
+        $context->structs[$name] = new Struct($name, false, $properties, $metadata);
 
-        // Evaluate child models
         foreach ($model->getChildModels() as $child) {
-            $this->evaluateModel($child, $scope, $name);
-        }
-    }
-
-    /**
-     * @param array<PropertyNode> $propertyNodes
-     * @return array<StructProperty>
-     */
-    private function evaluateProperties(array $propertyNodes, string $namePrefix, TypeScope $scope): array
-    {
-        $result = [];
-        $seenNames = [];
-        foreach ($propertyNodes as $node) {
-            $name = $node->getName();
-            if (isset($seenNames[$name])) {
-                throw new EvaluatorException(sprintf(
-                    'Duplicate property "%s" in "%s"',
-                    $name,
-                    $namePrefix
-                ));
-            }
-            $seenNames[$name] = true;
-            $result[] = $this->evaluateProperty($node, $namePrefix, $scope);
-        }
-        return $result;
-    }
-
-    private function evaluateProperty(PropertyNode $node, string $namePrefix, TypeScope $scope): StructProperty
-    {
-        $name = $node->getName();
-        if (isset($this->identifierConstants[$name])) {
-            $name = $this->identifierConstants[$name];
-        }
-
-        $annotations = $this->evaluateAnnotations($node->getAnnotations());
-        $nameContext = $namePrefix . StringHelper::toPascalCase($name);
-        $type = $this->evaluateType($node->getType(), $nameContext, $scope);
-
-        $comment = $node->getComment();
-
-        return new StructProperty(
-            $name,
-            $type,
-            $node->isOptional(),
-            $annotations,
-            $comment !== null ? $comment->getText() : null
-        );
-    }
-
-    private function evaluateType(TypeNode $node, string $nameContext, TypeScope $scope): Type
-    {
-        if ($node instanceof StringLiteralTypeNode) {
-            return Type::stringLiteral($node->getValue());
-        }
-
-        if ($node instanceof SimpleTypeNode) {
-            $name = $node->getName();
-
-            if ($scope->isModelName($name)) {
-                return Type::reference($name);
-            }
-
-            $alias = $scope->resolveType($name);
-            if ($alias !== null) {
-                if ($alias->getTypeDefinition() === null) {
-                    return Type::simple($name);
-                }
-                return Type::alias($name);
-            }
-
-            throw new EvaluatorException(sprintf(
-                'Unknown type "%s". Did you forget to import it or define it in [type]?',
-                $name
-            ));
-        }
-
-        if ($node instanceof ArrayTypeNode) {
-            return Type::array($this->evaluateType($node->getElementType(), $nameContext, $scope));
-        }
-
-        if ($node instanceof NullableTypeNode) {
-            return Type::nullable($this->evaluateType($node->getInnerType(), $nameContext, $scope));
-        }
-
-        if ($node instanceof UnionTypeNode) {
-            $types = [];
-            foreach ($node->getTypes() as $t) {
-                $types[] = $this->evaluateType($t, $nameContext, $scope);
-            }
-            return Type::union($types);
-        }
-
-        if ($node instanceof InlineObjectTypeNode) {
-            $structName = $node->hasExplicitName()
-                ? (string) $node->getExplicitName()
-                : $nameContext;
-
-            if (isset($this->structs[$structName])) {
-                throw new EvaluatorException(sprintf(
-                    'Inline object struct name collision: "%s" is already defined as a struct',
-                    $structName
-                ));
-            }
-
-            $metadata = $this->evaluateMetadata($node->getMetadata());
-            $properties = $this->evaluateProperties($node->getProperties(), $structName, $scope);
-
-            $this->structs[$structName] = new Struct($structName, true, $properties, $metadata);
-
-            return Type::reference($structName);
-        }
-
-        throw new EvaluatorException('Unknown type node: ' . get_class($node));
-    }
-
-    /**
-     * @param array<AnnotationNode> $annotationNodes
-     */
-    private function evaluateAnnotations(array $annotationNodes): AnnotationCollection
-    {
-        $result = [];
-        foreach ($annotationNodes as $annotation) {
-            $name = $annotation->getName();
-            if (isset($result[$name])) {
-                throw new EvaluatorException(sprintf('Duplicate annotation "@%s"', $name));
-            }
-            $args = [];
-            foreach ($annotation->getArguments() as $arg) {
-                $args[] = $this->resolveValue($arg);
-            }
-            $result[$name] = new Annotation($name, $args);
-        }
-        return new AnnotationCollection($result);
-    }
-
-    /**
-     * @return mixed
-     */
-    private function resolveValue(BaseNode $node)
-    {
-        if ($node instanceof ValueNode) {
-            if ($node->getType() === ValueNode::TYPE_IDENTIFIER) {
-                $name = (string) $node->getValue();
-                if (isset($this->valueConstants[$name])) {
-                    $constValue = $this->valueConstants[$name]->getValue();
-                    if ($constValue !== null) {
-                        return $this->resolveValue($constValue);
-                    }
-                }
-                if (isset($this->identifierConstants[$name])) {
-                    return $this->identifierConstants[$name];
-                }
-            }
-            return $node->getValue();
-        }
-        if ($node instanceof ReferenceNode) {
-            $ns = $node->getNamespace();
-            $const = $node->getConstant();
-            $refKey = $ns . '::' . $const;
-
-            if (isset($this->resolvingRefs[$refKey])) {
-                throw new EvaluatorException(sprintf('Circular constant reference detected: "%s"', $refKey));
-            }
-
-            if (!isset($this->namespaces[$ns])) {
-                throw new EvaluatorException(sprintf('Unknown namespace "%s" in reference "%s::%s"', $ns, $ns, $const));
-            }
-            if (!isset($this->namespaces[$ns][$const])) {
-                throw new EvaluatorException(sprintf('Unknown constant "%s" in namespace "%s"', $const, $ns));
-            }
-
-            $this->resolvingRefs[$refKey] = true;
-            try {
-                $value = $this->namespaces[$ns][$const];
-            } finally {
-                unset($this->resolvingRefs[$refKey]);
-            }
-            return $value;
-        }
-        if ($node instanceof MetadataBlockNode) {
-            $result = [];
-            foreach ($node->getEntries() as $entry) {
-                $result[] = $this->resolveMetadataEntry($entry);
-            }
-            return $result;
-        }
-        if ($node instanceof MetadataListNode) {
-            $result = [];
-            foreach ($node->getItems() as $item) {
-                $result[] = $this->resolveValue($item);
-            }
-            return $result;
-        }
-        throw new EvaluatorException('Unexpected node type in metadata value: ' . get_class($node));
-    }
-
-
-    private function processImports(ScopeNode $scope): void
-    {
-        foreach ($scope->getImports() as $import) {
-            $path = $import->getPath();
-
-            if ($this->schemaNamespace === null) {
-                throw new EvaluatorException(sprintf(
-                    'Cannot resolve import "%s": no SchemaNamespace provided',
-                    $path
-                ));
-            }
-
-            $absPath = $this->schemaNamespace->getPath($path);
-
-            if (isset($this->importedFiles[$absPath])) {
-                continue;
-            }
-            $this->importedFiles[$absPath] = true;
-
-            $code = $this->schemaNamespace->getCode($path);
-            $tokens = (new Lexer($code, $path))->tokens();
-            /** @var ScopeNode $importedScope */
-            $importedScope = (new ScopeParser($tokens))->parse();
-
-            $this->processImports($importedScope);
-            $this->mergeScope($scope, $importedScope);
-        }
-    }
-
-    private function mergeScope(ScopeNode $target, ScopeNode $source): void
-    {
-        foreach ($source->getModels() as $model) {
-            $target->addModel($model);
-        }
-        foreach ($source->getNamespaces() as $namespace) {
-            $target->addNamespace($namespace);
-        }
-        foreach ($source->getMetadata() as $metadata) {
-            $target->addMetadata($metadata);
-        }
-        foreach ($source->getConstants() as $constant) {
-            $target->addConstant($constant);
-        }
-        $existingNames = [];
-        foreach ($target->getTypeAliases() as $a) {
-            $existingNames[$a->getName()] = true;
-        }
-        foreach ($source->getTypeAliases() as $alias) {
-            if (isset($existingNames[$alias->getName()])) {
-                continue;
-            }
-            $target->addTypeAlias($alias);
+            $this->evaluateModel($child, $scope, $name, $context);
         }
     }
 }

@@ -3,6 +3,7 @@
 namespace ClanCats\SchemaScript\Node;
 
 use ClanCats\SchemaScript\Token;
+use ClanCats\SchemaScript\TokenType;
 
 class ValueNode extends BaseNode
 {
@@ -29,7 +30,7 @@ class ValueNode extends BaseNode
 
     public static function fromToken(Token $token): self
     {
-        $type = $token->isType(Token::TOKEN_NUMBER) ? self::TYPE_NUMBER : self::TYPE_STRING;
+        $type = $token->isType(TokenType::Number) ? self::TYPE_NUMBER : self::TYPE_STRING;
         return new self($type, $token->getValue());
     }
 

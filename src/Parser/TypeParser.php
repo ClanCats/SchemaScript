@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\Type\TypeNode;
 use ClanCats\SchemaScript\Node\Type\SimpleTypeNode;
 use ClanCats\SchemaScript\Node\Type\NullableTypeNode;
@@ -25,7 +25,7 @@ class TypeParser extends SchemaParser
     {
         $type = $this->parseSingleType();
 
-        if ($this->parserIsDone() || !$this->currentToken()->isType(T::TOKEN_PIPE)) {
+        if ($this->parserIsDone() || !$this->currentToken()->isType(TokenType::Pipe)) {
             return $type;
         }
 
@@ -36,7 +36,7 @@ class TypeParser extends SchemaParser
                 throw $this->errorParsing("Unexpected trailing pipe in union type.");
             }
             $types[] = $this->parseSingleType();
-        } while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_PIPE));
+        } while (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::Pipe));
 
         return new UnionTypeNode($types);
     }
@@ -45,33 +45,35 @@ class TypeParser extends SchemaParser
     {
         $token = $this->currentToken();
 
-        if ($token->isType(T::TOKEN_PAREN_OPEN)) {
+        if ($token->isType(TokenType::ParenOpen)) {
             $this->skipToken();
             $type = $this->parseType();
-            $this->expectCurrentType(T::TOKEN_PAREN_CLOSE);
+            $this->expectCurrentType(TokenType::ParenClose);
             $this->skipToken();
-        } elseif ($token->isType(T::TOKEN_SCOPE_OPEN)) {
+        } elseif ($token->isType(TokenType::ScopeOpen)) {
             $type = $this->parseInlineObject();
-        } elseif ($token->isType(T::TOKEN_IDENTIFIER) && $this->nextToken() !== null && $this->nextToken()->isType(T::TOKEN_SCOPE_OPEN)) {
+        } elseif ($token->isType(TokenType::Identifier) && $this->nextToken() !== null && $this->nextToken()->isType(TokenType::ScopeOpen)) {
             $explicitName = $token->getValue();
             $this->skipToken();
             $type = $this->parseInlineObject($explicitName);
-        } elseif ($token->isType(T::TOKEN_STRING)) {
+        } elseif ($token->isType(TokenType::String)) {
             $type = new StringLiteralTypeNode($token->getValue());
+            $this->capturePosition($type, $token);
             $this->skipToken();
-        } elseif ($token->isType(T::TOKEN_IDENTIFIER)) {
+        } elseif ($token->isType(TokenType::Identifier)) {
             $type = new SimpleTypeNode($token->getValue());
+            $this->capturePosition($type, $token);
             $this->skipToken();
         } else {
             throw $this->errorUnexpectedToken($token);
         }
 
-        while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_ARRAY_SUFFIX)) {
+        while (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::ArraySuffix)) {
             $type = new ArrayTypeNode($type);
             $this->skipToken();
         }
 
-        if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_QUESTION)) {
+        if (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::Question)) {
             $type = new NullableTypeNode($type);
             $this->skipToken();
         }
@@ -81,12 +83,14 @@ class TypeParser extends SchemaParser
 
     private function parseInlineObject(?string $explicitName = null): InlineObjectTypeNode
     {
+        $openToken = $this->currentToken();
         $bodyTokens = $this->getTokensUntilClosingScope();
         $bodyParser = new ModelBodyParser($bodyTokens);
         /** @var \ClanCats\SchemaScript\Node\ModelDefinitionNode $bodyNode */
         $bodyNode = $bodyParser->parse();
 
         $inlineObject = new InlineObjectTypeNode();
+        $this->capturePosition($inlineObject, $openToken);
         if ($explicitName !== null) {
             $inlineObject->setExplicitName($explicitName);
         }

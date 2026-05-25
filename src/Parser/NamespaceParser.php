@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\NamespaceNode;
 use ClanCats\SchemaScript\Node\ConstantNode;
 use ClanCats\SchemaScript\Node\ValueNode;
@@ -15,22 +15,25 @@ class NamespaceParser extends SchemaParser
 
     protected function next(): void
     {
-        if ($this->currentToken()->isType(T::TOKEN_LINE) || $this->currentToken()->isType(T::TOKEN_COMMENT)) {
+        if ($this->currentToken()->isType(TokenType::Line) || $this->currentToken()->isType(TokenType::Comment)) {
             $this->skipToken();
             return;
         }
 
-        $this->expectCurrentType(T::TOKEN_KEYWORD_NS);
+        $this->expectCurrentType(TokenType::KeywordNs);
         $this->skipToken();
 
-        $name = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+        $nameToken = $this->expectCurrentType(TokenType::Identifier);
+        $name = $nameToken->getValue();
         $this->skipToken();
 
-        $this->expectCurrentType(T::TOKEN_SCOPE_OPEN);
+        $this->expectCurrentType(TokenType::ScopeOpen);
         $bodyTokens = $this->getTokensUntilClosingScope();
 
-        $this->namespace = new NamespaceNode($name);
-        $this->parseBody($this->namespace, $bodyTokens);
+        $namespace = new NamespaceNode($name);
+        $this->capturePosition($namespace, $nameToken);
+        $this->parseBody($namespace, $bodyTokens);
+        $this->namespace = $namespace;
         $this->finish();
     }
 
@@ -45,20 +48,21 @@ class NamespaceParser extends SchemaParser
         while ($i < $count) {
             $token = $tokens[$i];
 
-            if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
+            if ($token->isType(TokenType::Line) || $token->isType(TokenType::Comment)) {
                 $i++;
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_KEYWORD_NS)) {
+            if ($token->isType(TokenType::KeywordNs)) {
                 $i++;
-                if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_IDENTIFIER)) {
+                if ($i >= $count || !$tokens[$i]->isType(TokenType::Identifier)) {
                     throw $this->errorParsing("Expected identifier after 'ns'.");
                 }
-                $childName = $tokens[$i]->getValue();
+                $childNameToken = $tokens[$i];
+                $childName = $childNameToken->getValue();
                 $i++;
 
-                if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_SCOPE_OPEN)) {
+                if ($i >= $count || !$tokens[$i]->isType(TokenType::ScopeOpen)) {
                     throw $this->errorParsing("Expected '{' after namespace name.");
                 }
                 $i++;
@@ -66,9 +70,9 @@ class NamespaceParser extends SchemaParser
                 $depth = 1;
                 $childBodyTokens = [];
                 while ($i < $count) {
-                    if ($tokens[$i]->isType(T::TOKEN_SCOPE_OPEN)) {
+                    if ($tokens[$i]->isType(TokenType::ScopeOpen)) {
                         $depth++;
-                    } elseif ($tokens[$i]->isType(T::TOKEN_SCOPE_CLOSE)) {
+                    } elseif ($tokens[$i]->isType(TokenType::ScopeClose)) {
                         $depth--;
                         if ($depth === 0) {
                             $i++;
@@ -80,26 +84,28 @@ class NamespaceParser extends SchemaParser
                 }
 
                 $childNode = new NamespaceNode($childName);
+                $childNode->setSourcePosition($childNameToken->getLine(), $childNameToken->getColumn(), $childNameToken->getFilename());
                 $this->parseBody($childNode, $childBodyTokens);
                 $target->addChild($childNode);
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_KEYWORD_CONST)) {
+            if ($token->isType(TokenType::KeywordConst)) {
                 $i++;
                 if ($i >= $count) {
                     throw $this->errorParsing("Expected identifier after 'const'.");
                 }
 
                 $nameToken = $tokens[$i];
-                if (!$nameToken->isType(T::TOKEN_IDENTIFIER)) {
+                if (!$nameToken->isType(TokenType::Identifier)) {
                     throw $this->errorUnexpectedToken($nameToken);
                 }
 
                 $constant = new ConstantNode($nameToken->getValue());
+                $constant->setSourcePosition($nameToken->getLine(), $nameToken->getColumn(), $nameToken->getFilename());
                 $i++;
 
-                if ($i < $count && $tokens[$i]->isType(T::TOKEN_EQUAL)) {
+                if ($i < $count && $tokens[$i]->isType(TokenType::Equal)) {
                     $i++;
                     if ($i >= $count) {
                         throw $this->errorParsing("Expected value after '='.");
@@ -107,16 +113,16 @@ class NamespaceParser extends SchemaParser
 
                     $valueToken = $tokens[$i];
 
-                    if ($valueToken->isType(T::TOKEN_STRING) || $valueToken->isType(T::TOKEN_NUMBER)) {
+                    if ($valueToken->isType(TokenType::String) || $valueToken->isType(TokenType::Number)) {
                         $constant->setValue(ValueNode::fromToken($valueToken));
                         $i++;
-                    } elseif ($valueToken->isType(T::TOKEN_IDENTIFIER)) {
+                    } elseif ($valueToken->isType(TokenType::Identifier)) {
                         $parts = [$valueToken->getValue()];
                         $i++;
 
-                        while ($i < $count && $tokens[$i]->isType(T::TOKEN_DOUBLE_COLON)) {
+                        while ($i < $count && $tokens[$i]->isType(TokenType::DoubleColon)) {
                             $i++;
-                            if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_IDENTIFIER)) {
+                            if ($i >= $count || !$tokens[$i]->isType(TokenType::Identifier)) {
                                 throw $this->errorParsing("Expected identifier after '::'.");
                             }
                             $parts[] = $tokens[$i]->getValue();

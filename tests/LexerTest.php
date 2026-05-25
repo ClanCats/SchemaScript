@@ -35,9 +35,9 @@ class LexerTest extends TestCase
         $tokens = $this->tokensFromCode("hello\t\tworld");
         $types = array_map(fn(Token $t) => $t->getType(), $tokens);
         $this->assertEquals([
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::Identifier,
+            TokenType::Space,
+            TokenType::Identifier,
         ], $types);
     }
 
@@ -46,15 +46,15 @@ class LexerTest extends TestCase
         $tokens = $this->tokensFromCode("a\n\n\nb");
         $types = array_map(fn(Token $t) => $t->getType(), $tokens);
         $this->assertEquals([
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_LINE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::Identifier,
+            TokenType::Line,
+            TokenType::Identifier,
         ], $types);
     }
 
     public function testStringTokensSingleQuote() : void
     {
-        $this->assertTokenTypes("'int'", [Token::TOKEN_STRING]);
+        $this->assertTokenTypes("'int'", [TokenType::String]);
 
         $tokens = $this->tokensFromCode("'int'");
         $this->assertEquals('int', $tokens[0]->getValue());
@@ -62,7 +62,7 @@ class LexerTest extends TestCase
 
     public function testStringTokensDoubleQuote() : void
     {
-        $this->assertTokenTypes('"text"', [Token::TOKEN_STRING]);
+        $this->assertTokenTypes('"text"', [TokenType::String]);
 
         $tokens = $this->tokensFromCode('"text"');
         $this->assertEquals('text', $tokens[0]->getValue());
@@ -159,10 +159,10 @@ class LexerTest extends TestCase
     {
         $tokens = $this->tokensFromCode("'line1\nline2'\nfoo");
         $stringToken = $tokens[0];
-        $this->assertSame(Token::TOKEN_STRING, $stringToken->getType());
+        $this->assertSame(TokenType::String, $stringToken->getType());
         $this->assertSame(1, $stringToken->getLine());
         // 'foo' should be on line 3 (line1=1, line2=2, foo=3)
-        $fooToken = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER)))[0];
+        $fooToken = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier)))[0];
         $this->assertSame(3, $fooToken->getLine());
     }
 
@@ -262,7 +262,7 @@ class LexerTest extends TestCase
     {
         $code = "'first' 'second'";
         $tokens = $this->tokensFromCode($code);
-        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_STRING)));
+        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::String)));
         $this->assertCount(2, $strings);
         $this->assertSame('first', $strings[0]->getValue());
         $this->assertSame('second', $strings[1]->getValue());
@@ -272,7 +272,7 @@ class LexerTest extends TestCase
     {
         $code = "'single' \"double\"";
         $tokens = $this->tokensFromCode($code);
-        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_STRING)));
+        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::String)));
         $this->assertCount(2, $strings);
         $this->assertSame('single', $strings[0]->getValue());
         $this->assertSame('double', $strings[1]->getValue());
@@ -281,7 +281,7 @@ class LexerTest extends TestCase
     public function testStringInMetadataContext() : void
     {
         $tokens = $this->tokensFromCode("[key] = 'hello\\'s world'");
-        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_STRING)));
+        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::String)));
         $this->assertCount(1, $strings);
         $this->assertSame("hello's world", $strings[0]->getValue());
     }
@@ -310,13 +310,13 @@ class LexerTest extends TestCase
     {
         $lexer = new Lexer("[key]   =   'hello   world'");
         $tokens = $lexer->tokens();
-        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_STRING)));
+        $strings = array_values(array_filter($tokens, fn(Token $t) => $t->isType(TokenType::String)));
         $this->assertSame('hello   world', $strings[0]->getValue());
     }
 
     public function testStringValueCaching() : void
     {
-        $token = new Token(1, Token::TOKEN_STRING, "'cached'");
+        $token = new Token(1, TokenType::String, "'cached'");
         $first = $token->getValue();
         $second = $token->getValue();
         $this->assertSame($first, $second);
@@ -329,7 +329,7 @@ class LexerTest extends TestCase
 
     public function testNumberTokens() : void
     {
-        $this->assertTokenTypes('42', [Token::TOKEN_NUMBER]);
+        $this->assertTokenTypes('42', [TokenType::Number]);
 
         $tokens = $this->tokensFromCode('42');
         $this->assertSame(42, $tokens[0]->getValue());
@@ -337,15 +337,15 @@ class LexerTest extends TestCase
 
     public function testIdentifiers() : void
     {
-        $this->assertTokenTypes('User', [Token::TOKEN_IDENTIFIER]);
-        $this->assertTokenTypes('snake_case', [Token::TOKEN_IDENTIFIER]);
-        $this->assertTokenTypes('int32', [Token::TOKEN_IDENTIFIER]);
-        $this->assertTokenTypes('s1x1', [Token::TOKEN_IDENTIFIER]);
+        $this->assertTokenTypes('User', [TokenType::Identifier]);
+        $this->assertTokenTypes('snake_case', [TokenType::Identifier]);
+        $this->assertTokenTypes('int32', [TokenType::Identifier]);
+        $this->assertTokenTypes('s1x1', [TokenType::Identifier]);
     }
 
     public function testMetadataKey() : void
     {
-        $this->assertTokenTypes('[version]', [Token::TOKEN_METADATA_KEY]);
+        $this->assertTokenTypes('[version]', [TokenType::MetadataKey]);
 
         $tokens = $this->tokensFromCode('[version]');
         $this->assertEquals('version', $tokens[0]->getValue());
@@ -356,71 +356,71 @@ class LexerTest extends TestCase
 
     public function testAnnotation() : void
     {
-        $this->assertTokenTypes('@local', [Token::TOKEN_ANNOTATION]);
-        $this->assertTokenTypes('@lang.php', [Token::TOKEN_ANNOTATION]);
-        $this->assertTokenTypes('@enum', [Token::TOKEN_ANNOTATION]);
+        $this->assertTokenTypes('@local', [TokenType::Annotation]);
+        $this->assertTokenTypes('@lang.php', [TokenType::Annotation]);
+        $this->assertTokenTypes('@enum', [TokenType::Annotation]);
     }
 
     public function testKeywordNs() : void
     {
         $this->assertTokenTypes('ns Foo', [
-            Token::TOKEN_KEYWORD_NS,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::KeywordNs,
+            TokenType::Space,
+            TokenType::Identifier,
         ]);
     }
 
     public function testKeywordConst() : void
     {
         $this->assertTokenTypes('const bar', [
-            Token::TOKEN_KEYWORD_CONST,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::KeywordConst,
+            TokenType::Space,
+            TokenType::Identifier,
         ]);
     }
 
     public function testKeywordNsNotGreedy() : void
     {
-        $this->assertTokenTypes('namespace', [Token::TOKEN_IDENTIFIER]);
+        $this->assertTokenTypes('namespace', [TokenType::Identifier]);
     }
 
     public function testKeywordConstNotGreedy() : void
     {
-        $this->assertTokenTypes('constant', [Token::TOKEN_IDENTIFIER]);
+        $this->assertTokenTypes('constant', [TokenType::Identifier]);
     }
 
     public function testSymbols() : void
     {
-        $this->assertTokenTypes('{', [Token::TOKEN_SCOPE_OPEN]);
-        $this->assertTokenTypes('}', [Token::TOKEN_SCOPE_CLOSE]);
-        $this->assertTokenTypes('(', [Token::TOKEN_PAREN_OPEN]);
-        $this->assertTokenTypes(')', [Token::TOKEN_PAREN_CLOSE]);
-        $this->assertTokenTypes(':', [Token::TOKEN_COLON]);
-        $this->assertTokenTypes('=', [Token::TOKEN_EQUAL]);
-        $this->assertTokenTypes('?', [Token::TOKEN_QUESTION]);
-        $this->assertTokenTypes('|', [Token::TOKEN_PIPE]);
-        $this->assertTokenTypes(',', [Token::TOKEN_COMMA]);
+        $this->assertTokenTypes('{', [TokenType::ScopeOpen]);
+        $this->assertTokenTypes('}', [TokenType::ScopeClose]);
+        $this->assertTokenTypes('(', [TokenType::ParenOpen]);
+        $this->assertTokenTypes(')', [TokenType::ParenClose]);
+        $this->assertTokenTypes(':', [TokenType::Colon]);
+        $this->assertTokenTypes('=', [TokenType::Equal]);
+        $this->assertTokenTypes('?', [TokenType::Question]);
+        $this->assertTokenTypes('|', [TokenType::Pipe]);
+        $this->assertTokenTypes(',', [TokenType::Comma]);
     }
 
     public function testDoubleColon() : void
     {
         $this->assertTokenTypes('MappingType::camelCase', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_DOUBLE_COLON,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::Identifier,
+            TokenType::DoubleColon,
+            TokenType::Identifier,
         ]);
     }
 
     public function testArraySuffix() : void
     {
         $this->assertTokenTypes('int[]', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_ARRAY_SUFFIX,
+            TokenType::Identifier,
+            TokenType::ArraySuffix,
         ]);
 
         $this->assertTokenTypes('Message[]', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_ARRAY_SUFFIX,
+            TokenType::Identifier,
+            TokenType::ArraySuffix,
         ]);
     }
 
@@ -428,94 +428,94 @@ class LexerTest extends TestCase
     {
         $tokens = $this->tokensFromCode('// The users ID');
         $this->assertCount(1, $tokens);
-        $this->assertEquals(Token::TOKEN_COMMENT, $tokens[0]->getType());
+        $this->assertEquals(TokenType::Comment, $tokens[0]->getType());
     }
 
     public function testPropertyDeclaration() : void
     {
         $this->assertTokenTypes('id: int', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_COLON,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::Identifier,
+            TokenType::Colon,
+            TokenType::Space,
+            TokenType::Identifier,
         ]);
     }
 
     public function testNullableProperty() : void
     {
         $this->assertTokenTypes('avatar_image_id: int?', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_COLON,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_QUESTION,
+            TokenType::Identifier,
+            TokenType::Colon,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::Question,
         ]);
     }
 
     public function testOptionalKey() : void
     {
         $this->assertTokenTypes('avatar_image?: {', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_QUESTION,
-            Token::TOKEN_COLON,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_SCOPE_OPEN,
+            TokenType::Identifier,
+            TokenType::Question,
+            TokenType::Colon,
+            TokenType::Space,
+            TokenType::ScopeOpen,
         ]);
     }
 
     public function testMetadataAssignment() : void
     {
         $this->assertTokenTypes('[version] = 1', [
-            Token::TOKEN_METADATA_KEY,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_EQUAL,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_NUMBER,
+            TokenType::MetadataKey,
+            TokenType::Space,
+            TokenType::Equal,
+            TokenType::Space,
+            TokenType::Number,
         ]);
     }
 
     public function testNamespaceAccess() : void
     {
         $this->assertTokenTypes('[map:local] = MappingType::camelCase', [
-            Token::TOKEN_METADATA_KEY,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_EQUAL,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_DOUBLE_COLON,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::MetadataKey,
+            TokenType::Space,
+            TokenType::Equal,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::DoubleColon,
+            TokenType::Identifier,
         ]);
     }
 
     public function testAnnotationWithArgs() : void
     {
         $this->assertTokenTypes("@lang.php('int')", [
-            Token::TOKEN_ANNOTATION,
-            Token::TOKEN_PAREN_OPEN,
-            Token::TOKEN_STRING,
-            Token::TOKEN_PAREN_CLOSE,
+            TokenType::Annotation,
+            TokenType::ParenOpen,
+            TokenType::String,
+            TokenType::ParenClose,
         ]);
     }
 
     public function testEnumAnnotation() : void
     {
         $this->assertTokenTypes('@enum("text", "image")', [
-            Token::TOKEN_ANNOTATION,
-            Token::TOKEN_PAREN_OPEN,
-            Token::TOKEN_STRING,
-            Token::TOKEN_COMMA,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_STRING,
-            Token::TOKEN_PAREN_CLOSE,
+            TokenType::Annotation,
+            TokenType::ParenOpen,
+            TokenType::String,
+            TokenType::Comma,
+            TokenType::Space,
+            TokenType::String,
+            TokenType::ParenClose,
         ]);
     }
 
     public function testUnionType() : void
     {
         $this->assertTokenTypes('Image|User', [
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_PIPE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::Identifier,
+            TokenType::Pipe,
+            TokenType::Identifier,
         ]);
     }
 
@@ -523,23 +523,23 @@ class LexerTest extends TestCase
     {
         $code = "ns MappingType {\n const camelCase\n const snake_case\n}";
         $this->assertTokenTypes($code, [
-            Token::TOKEN_KEYWORD_NS,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_SCOPE_OPEN,
-            Token::TOKEN_LINE,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_KEYWORD_CONST,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_LINE,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_KEYWORD_CONST,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_LINE,
-            Token::TOKEN_SCOPE_CLOSE,
+            TokenType::KeywordNs,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::Space,
+            TokenType::ScopeOpen,
+            TokenType::Line,
+            TokenType::Space,
+            TokenType::KeywordConst,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::Line,
+            TokenType::Space,
+            TokenType::KeywordConst,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::Line,
+            TokenType::ScopeClose,
         ]);
     }
 
@@ -568,7 +568,7 @@ class LexerTest extends TestCase
     public function testLineTracking() : void
     {
         $tokens = $this->tokensFromCode("a\nb\nc");
-        $identifiers = array_filter($tokens, fn(Token $t) => $t->isType(Token::TOKEN_IDENTIFIER));
+        $identifiers = array_filter($tokens, fn(Token $t) => $t->isType(TokenType::Identifier));
         $lines = array_map(fn(Token $t) => $t->getLine(), array_values($identifiers));
         $this->assertEquals([1, 2, 3], $lines);
     }
@@ -580,47 +580,47 @@ class LexerTest extends TestCase
 
         $types = array_map(fn(Token $t) => $t->getType(), $tokens);
         $this->assertEquals([
-            Token::TOKEN_IDENTIFIER,   // User
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_SCOPE_OPEN,   // {
-            Token::TOKEN_LINE,         // \n
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_METADATA_KEY, // [version]
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_EQUAL,        // =
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_NUMBER,       // 2
-            Token::TOKEN_LINE,         // \n
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_IDENTIFIER,   // id
-            Token::TOKEN_COLON,        // :
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_IDENTIFIER,   // int
-            Token::TOKEN_LINE,         // \n
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_IDENTIFIER,   // avatar_image_id
-            Token::TOKEN_COLON,        // :
-            Token::TOKEN_SPACE,        // ' '
-            Token::TOKEN_IDENTIFIER,   // int
-            Token::TOKEN_QUESTION,     // ?
-            Token::TOKEN_LINE,         // \n
-            Token::TOKEN_SCOPE_CLOSE,  // }
+            TokenType::Identifier,   // User
+            TokenType::Space,        // ' '
+            TokenType::ScopeOpen,   // {
+            TokenType::Line,         // \n
+            TokenType::Space,        // ' '
+            TokenType::MetadataKey, // [version]
+            TokenType::Space,        // ' '
+            TokenType::Equal,        // =
+            TokenType::Space,        // ' '
+            TokenType::Number,       // 2
+            TokenType::Line,         // \n
+            TokenType::Space,        // ' '
+            TokenType::Identifier,   // id
+            TokenType::Colon,        // :
+            TokenType::Space,        // ' '
+            TokenType::Identifier,   // int
+            TokenType::Line,         // \n
+            TokenType::Space,        // ' '
+            TokenType::Identifier,   // avatar_image_id
+            TokenType::Colon,        // :
+            TokenType::Space,        // ' '
+            TokenType::Identifier,   // int
+            TokenType::Question,     // ?
+            TokenType::Line,         // \n
+            TokenType::ScopeClose,  // }
         ], $types);
     }
 
     public function testImportKeyword() : void
     {
         $this->assertTokenTypes('import base', [
-            Token::TOKEN_KEYWORD_IMPORT,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::KeywordImport,
+            TokenType::Space,
+            TokenType::Identifier,
         ]);
     }
 
     public function testImportAsIdentifierWhenNotKeyword() : void
     {
         $this->assertTokenTypes('importable', [
-            Token::TOKEN_IDENTIFIER,
+            TokenType::Identifier,
         ]);
     }
 
@@ -629,11 +629,11 @@ class LexerTest extends TestCase
         $tokens = $this->tokensFromCode("import scsc/base");
         $types = array_map(fn(Token $t) => $t->getType(), $tokens);
         $this->assertEquals([
-            Token::TOKEN_KEYWORD_IMPORT,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_SLASH,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::KeywordImport,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::Slash,
+            TokenType::Identifier,
         ], $types);
     }
 
@@ -642,13 +642,13 @@ class LexerTest extends TestCase
         $tokens = $this->tokensFromCode("import models/shared/common");
         $types = array_map(fn(Token $t) => $t->getType(), $tokens);
         $this->assertEquals([
-            Token::TOKEN_KEYWORD_IMPORT,
-            Token::TOKEN_SPACE,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_SLASH,
-            Token::TOKEN_IDENTIFIER,
-            Token::TOKEN_SLASH,
-            Token::TOKEN_IDENTIFIER,
+            TokenType::KeywordImport,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::Slash,
+            TokenType::Identifier,
+            TokenType::Slash,
+            TokenType::Identifier,
         ], $types);
     }
 
@@ -657,7 +657,7 @@ class LexerTest extends TestCase
         $tokens = $this->tokensFromCode("// this is a comment");
         $types = array_map(fn(Token $t) => $t->getType(), $tokens);
         $this->assertEquals([
-            Token::TOKEN_COMMENT,
+            TokenType::Comment,
         ], $types);
     }
 }

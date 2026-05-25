@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\AnnotationNode;
 use ClanCats\SchemaScript\Node\ValueNode;
 use ClanCats\SchemaScript\Node\ReferenceNode;
@@ -17,15 +17,18 @@ class AnnotationParser extends SchemaParser
      */
     protected array $arguments = [];
 
+    protected ?T $leadingToken = null;
+
     protected function next(): void
     {
         $token = $this->currentToken();
 
-        if ($token->isType(T::TOKEN_ANNOTATION)) {
+        if ($token->isType(TokenType::Annotation)) {
+            $this->leadingToken = $token;
             $this->name = substr($token->getValue(), 1);
             $this->skipToken();
 
-            if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_PAREN_OPEN)) {
+            if (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::ParenOpen)) {
                 $this->skipToken();
                 $this->parseArguments();
             }
@@ -34,7 +37,7 @@ class AnnotationParser extends SchemaParser
             return;
         }
 
-        if ($token->isType(T::TOKEN_LINE)) {
+        if ($token->isType(TokenType::Line)) {
             $this->skipToken();
             return;
         }
@@ -44,21 +47,21 @@ class AnnotationParser extends SchemaParser
 
     protected function parseArguments(): void
     {
-        while (!$this->parserIsDone() && !$this->currentToken()->isType(T::TOKEN_PAREN_CLOSE)) {
+        while (!$this->parserIsDone() && !$this->currentToken()->isType(TokenType::ParenClose)) {
             $token = $this->currentToken();
 
-            if ($token->isType(T::TOKEN_COMMA)) {
+            if ($token->isType(TokenType::Comma)) {
                 $this->skipToken();
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_STRING) || $token->isType(T::TOKEN_NUMBER)) {
+            if ($token->isType(TokenType::String) || $token->isType(TokenType::Number)) {
                 $this->arguments[] = ValueNode::fromToken($token);
                 $this->skipToken();
                 continue;
             }
 
-            if ($token->isType(T::TOKEN_IDENTIFIER)) {
+            if ($token->isType(TokenType::Identifier)) {
                 $identifier = $token->getValue();
                 $this->skipToken();
 
@@ -83,6 +86,10 @@ class AnnotationParser extends SchemaParser
 
     protected function node(): BaseNode
     {
-        return new AnnotationNode($this->name, $this->arguments);
+        $node = new AnnotationNode($this->name, $this->arguments);
+        if ($this->leadingToken !== null) {
+            $this->capturePosition($node, $this->leadingToken);
+        }
+        return $node;
     }
 }

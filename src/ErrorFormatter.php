@@ -4,6 +4,8 @@ namespace ClanCats\SchemaScript;
 
 use ClanCats\SchemaScript\Exception\LexerException;
 use ClanCats\SchemaScript\Exception\ParserException;
+use ClanCats\SchemaScript\Exception\EvaluatorException;
+use ClanCats\SchemaScript\Exception\GeneratorException;
 
 class ErrorFormatter
 {
@@ -13,11 +15,23 @@ class ErrorFormatter
         $column = null;
         $length = null;
 
-        if ($e instanceof LexerException || $e instanceof ParserException) {
+        if ($e instanceof LexerException || $e instanceof ParserException || $e instanceof EvaluatorException) {
             $line = $e->getSourceLine();
             $column = $e->getSourceColumn();
             $length = $e->getSourceLength();
             $sourceCode = $sourceCode ?? $e->getSourceCode();
+        }
+
+        if ($e instanceof GeneratorException) {
+            $message = $e->getMessage();
+            if ($e->getContextStructName() !== null) {
+                $message .= sprintf(' (in struct "%s"', $e->getContextStructName());
+                if ($e->getContextPropertyName() !== null) {
+                    $message .= sprintf(', property "%s"', $e->getContextPropertyName());
+                }
+                $message .= ')';
+            }
+            return "Error: " . $message;
         }
 
         if ($line === null || $sourceCode === null) {

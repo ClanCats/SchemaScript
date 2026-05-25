@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Parser;
 
 use ClanCats\SchemaScript\Token as T;
-use ClanCats\SchemaScript\Node\BaseNode;
+use ClanCats\SchemaScript\TokenType;use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ImportNode;
 
 class ImportParser extends SchemaParser
@@ -12,19 +12,20 @@ class ImportParser extends SchemaParser
 
     protected function next(): void
     {
-        $this->expectCurrentType(T::TOKEN_KEYWORD_IMPORT);
+        $importToken = $this->expectCurrentType(TokenType::KeywordImport);
         $this->skipToken();
 
-        $path = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+        $path = $this->expectCurrentType(TokenType::Identifier)->getValue();
         $this->skipToken();
 
-        while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_SLASH)) {
+        while (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::Slash)) {
             $this->skipToken();
-            $path .= '/' . $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+            $path .= '/' . $this->expectCurrentType(TokenType::Identifier)->getValue();
             $this->skipToken();
         }
 
         $this->import = new ImportNode($path);
+        $this->capturePosition($this->import, $importToken);
         $this->finish();
     }
 
