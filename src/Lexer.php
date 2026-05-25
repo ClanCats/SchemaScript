@@ -46,6 +46,7 @@ class Lexer
         "/\\Gns(?=[\\s{])/" => T::TOKEN_KEYWORD_NS,
         "/\\Gconst(?=[\\s\\n])/" => T::TOKEN_KEYWORD_CONST,
         "/\\Gimport(?=[\\s\\n])/" => T::TOKEN_KEYWORD_IMPORT,
+        "/\\Gpub(?=[\\s\\n])/" => T::TOKEN_KEYWORD_PUB,
 
         // multi-char symbols
         "/\\G\\[\\]/" => T::TOKEN_ARRAY_SUFFIX,

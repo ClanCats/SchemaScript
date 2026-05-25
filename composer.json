@@ -6,6 +6,9 @@
             "email": "mario@clancats.com"
         }
     ],
+    "require": {
+        "php": ">=8.3"
+    },
     "require-dev": {
         "phpstan/phpstan": "2.1.55",
         "phpunit/phpunit": "^9",

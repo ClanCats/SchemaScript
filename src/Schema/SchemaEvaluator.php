@@ -14,6 +14,8 @@ use ClanCats\SchemaScript\Node\ValueNode;
 use ClanCats\SchemaScript\Node\ReferenceNode;
 use ClanCats\SchemaScript\Node\TypeAliasNode;
 use ClanCats\SchemaScript\Node\NamespaceNode;
+use ClanCats\SchemaScript\Node\ConstantNode;
+use ClanCats\SchemaScript\Util\StringHelper;
 use ClanCats\SchemaScript\Node\Type\TypeNode;
 use ClanCats\SchemaScript\Node\Type\SimpleTypeNode;
 use ClanCats\SchemaScript\Node\Type\ArrayTypeNode;
@@ -34,7 +36,7 @@ class SchemaEvaluator
     private array $structs = [];
 
     /**
-     * @var array<string, array<string, mixed>>
+     * @var array<string, TypeAlias>
      */
     private array $typeAliasData = [];
 
@@ -53,6 +55,16 @@ class SchemaEvaluator
      */
     private array $resolvingRefs = [];
 
+    /**
+     * @var array<string, string>
+     */
+    private array $identifierConstants = [];
+
+    /**
+     * @var array<string, ConstantNode>
+     */
+    private array $valueConstants = [];
+
     private ?SchemaNamespace $schemaNamespace;
 
     public function __construct(?SchemaNamespace $schemaNamespace = null)
@@ -67,6 +79,8 @@ class SchemaEvaluator
         $this->namespaces = [];
         $this->importedFiles = [];
         $this->resolvingRefs = [];
+        $this->identifierConstants = [];
+        $this->valueConstants = [];
 
         $this->processImports($scope);
 
@@ -75,6 +89,10 @@ class SchemaEvaluator
 
         // Evaluate namespaces and metadata
         $this->namespaces = $this->evaluateNamespaces($scope->getNamespaces());
+
+        // Process scope-level constants (after imports and name discovery)
+        $this->processScopeConstants($scope, $rootScope);
+
         $metadata = $this->evaluateMetadata($scope->getMetadata());
 
         // Evaluate type aliases (with resolved types)
@@ -149,7 +167,7 @@ class SchemaEvaluator
 
     /**
      * @param array<MetadataEntryNode> $entryNodes
-     * @return array<array{key: string, value: mixed, attributes: array<string, mixed[]>}>
+     * @return array<array{key: string, value: mixed, attributes: AnnotationCollection}>
      */
     private function evaluateMetadata(array $entryNodes): array
     {
@@ -161,7 +179,7 @@ class SchemaEvaluator
     }
 
     /**
-     * @return array{key: string, value: mixed, attributes: array<string, mixed[]>}
+     * @return array{key: string, value: mixed, attributes: AnnotationCollection}
      */
     private function resolveMetadataEntry(MetadataEntryNode $node): array
     {
@@ -175,7 +193,7 @@ class SchemaEvaluator
 
     /**
      * @param array<TypeAliasNode> $aliasNodes
-     * @return array<string, array<string, mixed>>
+     * @return array<string, TypeAlias>
      */
     private function evaluateTypeAliases(array $aliasNodes, TypeScope $scope): array
     {
@@ -192,10 +210,12 @@ class SchemaEvaluator
                 $resolvedType = $this->evaluateType($typeDef, $name, $scope);
             }
 
-            $result[$name] = [
-                'annotations' => $this->evaluateAnnotations($alias->getAnnotations()),
-                'resolvedType' => $resolvedType,
-            ];
+            $result[$name] = new TypeAlias(
+                $name,
+                $alias->isPublic(),
+                $resolvedType,
+                $this->evaluateAnnotations($alias->getAnnotations())
+            );
         }
         return $result;
     }
@@ -207,24 +227,59 @@ class SchemaEvaluator
     private function evaluateNamespaces(array $namespaceNodes): array
     {
         foreach ($namespaceNodes as $ns) {
-            $name = $ns->getName();
-            if (isset($this->namespaces[$name])) {
-                throw new EvaluatorException(sprintf('Duplicate namespace definition: "%s"', $name));
+            $this->evaluateNamespaceRecursive($ns, '');
+        }
+        return $this->namespaces;
+    }
+
+    private function evaluateNamespaceRecursive(NamespaceNode $ns, string $prefix): void
+    {
+        $fullName = $prefix !== '' ? $prefix . '::' . $ns->getName() : $ns->getName();
+
+        if (!empty($ns->getConstants())) {
+            if (isset($this->namespaces[$fullName])) {
+                throw new EvaluatorException(sprintf('Duplicate namespace definition: "%s"', $fullName));
             }
             $constants = [];
             foreach ($ns->getConstants() as $constant) {
                 $constName = $constant->getName();
                 if (isset($constants[$constName])) {
-                    throw new EvaluatorException(sprintf('Duplicate constant "%s" in namespace "%s"', $constName, $name));
+                    throw new EvaluatorException(sprintf('Duplicate constant "%s" in namespace "%s"', $constName, $fullName));
                 }
                 $constValue = $constant->getValue();
                 $constants[$constName] = ($constant->hasValue() && $constValue !== null)
                     ? $this->resolveValue($constValue)
-                    : $name . '::' . $constName;
+                    : $fullName . '::' . $constName;
             }
-            $this->namespaces[$name] = $constants;
+            $this->namespaces[$fullName] = $constants;
         }
-        return $this->namespaces;
+
+        foreach ($ns->getChildren() as $child) {
+            $this->evaluateNamespaceRecursive($child, $fullName);
+        }
+    }
+
+    private function processScopeConstants(ScopeNode $scope, TypeScope $rootScope): void
+    {
+        foreach ($scope->getConstants() as $constant) {
+            $name = $constant->getName();
+            $value = $constant->getValue();
+
+            if ($value instanceof ValueNode && $value->getType() === ValueNode::TYPE_IDENTIFIER) {
+                $identifier = (string) $value->getValue();
+
+                if ($rootScope->resolveType($identifier) !== null || $rootScope->isModelName($identifier)) {
+                    $aliasNode = new TypeAliasNode($name);
+                    $aliasNode->setTypeDefinition(new SimpleTypeNode($identifier));
+                    $scope->addTypeAlias($aliasNode);
+                    $rootScope->registerTypeAlias($aliasNode);
+                }
+
+                $this->identifierConstants[$name] = $identifier;
+            } elseif ($value !== null) {
+                $this->valueConstants[$name] = $constant;
+            }
+        }
     }
 
     private function evaluateModel(ModelDefinitionNode $model, TypeScope $parentScope, string $namePrefix): void
@@ -279,15 +334,23 @@ class SchemaEvaluator
 
     private function evaluateProperty(PropertyNode $node, string $namePrefix, TypeScope $scope): StructProperty
     {
+        $name = $node->getName();
+        if (isset($this->identifierConstants[$name])) {
+            $name = $this->identifierConstants[$name];
+        }
+
         $annotations = $this->evaluateAnnotations($node->getAnnotations());
-        $nameContext = $namePrefix . $this->toPascalCase($node->getName());
+        $nameContext = $namePrefix . StringHelper::toPascalCase($name);
         $type = $this->evaluateType($node->getType(), $nameContext, $scope);
 
+        $comment = $node->getComment();
+
         return new StructProperty(
-            $node->getName(),
+            $name,
             $type,
             $node->isOptional(),
-            $annotations
+            $annotations,
+            $comment !== null ? $comment->getText() : null
         );
     }
 
@@ -306,8 +369,7 @@ class SchemaEvaluator
 
             $alias = $scope->resolveType($name);
             if ($alias !== null) {
-                $aliasAnnotations = $this->evaluateAnnotations($alias->getAnnotations());
-                if (empty($aliasAnnotations)) {
+                if ($alias->getTypeDefinition() === null) {
                     return Type::simple($name);
                 }
                 return Type::alias($name);
@@ -360,9 +422,8 @@ class SchemaEvaluator
 
     /**
      * @param array<AnnotationNode> $annotationNodes
-     * @return array<string, mixed[]>
      */
-    private function evaluateAnnotations(array $annotationNodes): array
+    private function evaluateAnnotations(array $annotationNodes): AnnotationCollection
     {
         $result = [];
         foreach ($annotationNodes as $annotation) {
@@ -372,11 +433,11 @@ class SchemaEvaluator
             }
             $args = [];
             foreach ($annotation->getArguments() as $arg) {
-                $args[] = $arg->getValue();
+                $args[] = $this->resolveValue($arg);
             }
-            $result[$name] = $args;
+            $result[$name] = new Annotation($name, $args);
         }
-        return $result;
+        return new AnnotationCollection($result);
     }
 
     /**
@@ -385,6 +446,18 @@ class SchemaEvaluator
     private function resolveValue(BaseNode $node)
     {
         if ($node instanceof ValueNode) {
+            if ($node->getType() === ValueNode::TYPE_IDENTIFIER) {
+                $name = (string) $node->getValue();
+                if (isset($this->valueConstants[$name])) {
+                    $constValue = $this->valueConstants[$name]->getValue();
+                    if ($constValue !== null) {
+                        return $this->resolveValue($constValue);
+                    }
+                }
+                if (isset($this->identifierConstants[$name])) {
+                    return $this->identifierConstants[$name];
+                }
+            }
             return $node->getValue();
         }
         if ($node instanceof ReferenceNode) {
@@ -428,11 +501,6 @@ class SchemaEvaluator
         throw new EvaluatorException('Unexpected node type in metadata value: ' . get_class($node));
     }
 
-    private function toPascalCase(string $name): string
-    {
-        $name = (string) preg_replace('/_{2,}/', '_', $name);
-        return str_replace(' ', '', ucwords(str_replace('_', ' ', $name)));
-    }
 
     private function processImports(ScopeNode $scope): void
     {
@@ -473,6 +541,9 @@ class SchemaEvaluator
         }
         foreach ($source->getMetadata() as $metadata) {
             $target->addMetadata($metadata);
+        }
+        foreach ($source->getConstants() as $constant) {
+            $target->addConstant($constant);
         }
         $existingNames = [];
         foreach ($target->getTypeAliases() as $a) {

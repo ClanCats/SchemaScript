@@ -1,0 +1,38 @@
+// metadata example
+
+[ship] = {
+  name = 'Daedalus'
+  class = 'BC-304'
+  launched = 2005
+  affiliation = 'United States Air Force'
+  intergalactic = true
+}
+
+[armament] = {
+  primary = {'Asgard plasma beams', 'Railguns'}
+  fighters = {'F-302 interceptors'}
+  fighter_complement = 16
+}
+
+[upgrades] = {
+  @source('Asgard')
+  asgard_core = 'Complete Asgard knowledge base and technology suite'
+
+  @source('Ancient')
+  zpm = 'Zero Point Module power augmentation'
+}
+
+[engagements] = {
+  [battle] = {
+    enemy = 'Wraith'
+    outcome = 'victory'
+  }
+  [battle] = {
+    enemy = 'Asurans'
+    outcome = 'victory'
+  }
+  [battle] = {
+    enemy = 'Ori'
+    outcome = 'retreat'
+  }
+}

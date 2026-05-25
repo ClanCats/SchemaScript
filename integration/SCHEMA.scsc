@@ -9,6 +9,13 @@ import scsc/base
   }
   [ts.types] = {
     output = 'output/ts/types/'
+    include_comments = true
+  }
+}
+
+[map] = {
+  api = {
+    strategy = MappingStrategy::camelCase
   }
 }
 
@@ -18,3 +25,44 @@ User {
     id: pk_t
     name: string
 }
+
+[type] = {
+    position = {
+        x: int
+        y: int
+    }
+    size = {
+        width: int
+        height: int
+    }
+}
+
+Box {
+    // the position of the box
+    pos: position
+    // the size of the box
+    size: size
+    // the rotation in radians
+    // formula to convert from degrees to radians: degrees * (pi / 180)
+    rotation: float
+}
+
+[type] = {
+  pub MessageType = 'text'|'image'|'video'
+}
+
+Message {
+
+  id: pk_t
+  type: MessageType
+  text: string?
+  actor: User?
+  unseen?: bool
+  
+  @map.api(created_at)
+  createdAt: int 
+
+  @map.api(modified_at)
+  updatedAt: int
+}
+

@@ -12,7 +12,7 @@ class ModelDefinitionParser extends SchemaParser
 
     protected function next(): void
     {
-        if ($this->currentToken()->isType(T::TOKEN_LINE)) {
+        if ($this->currentToken()->isType(T::TOKEN_LINE) || $this->currentToken()->isType(T::TOKEN_COMMENT)) {
             $this->skipToken();
             return;
         }

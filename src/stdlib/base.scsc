@@ -1,26 +1,159 @@
+[SCSCConfig] = {
+    version_major = 1
+    version_minor = 0
+    version_patch = 0
+}
+
+ns SCSC {
+ns Lang {
+  ns PHP {
+    ns Type {
+      const int = 'int'
+      const string = 'string'
+      const bool = 'bool'
+      const float = 'float'
+      const array = 'array'
+      const object = 'object'
+      const null = 'null'
+      const mixed = 'mixed'
+    }
+  }
+  ns TS {
+    ns Type {
+      const number = 'number'
+      const string = 'string'
+      const boolean = 'boolean'
+      const any = 'any'
+      const null = 'null'
+      const undefined = 'undefined'
+      const object = 'object'
+      const bigint = 'bigint'
+      const Uint8Array = 'Uint8Array'
+      const unknown = 'unknown'
+    }
+  }
+}
+}
+
+ns MappingStrategy {
+  const camelCase
+  const snakeCase
+  const pascalCase
+}
+
 [type] = {
+
+  // Integer types
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   int
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   int8
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   int16
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   int32
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   int64
+
+  // Unsigned integer types
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   uint
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   uint8
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   uint16
+
+  @lang.php(SCSC::Lang::PHP::Type::int)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   uint32
+
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::bigint)
   uint64
+
+  // Floating point types
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::float)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   float
+
+  @lang.php(SCSC::Lang::PHP::Type::float)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   float32
+
+  @lang.php(SCSC::Lang::PHP::Type::float)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   float64
+
+  @lang.php(SCSC::Lang::PHP::Type::float)
+  @lang.ts(SCSC::Lang::TS::Type::number)
   double
+
+  // String types
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::string)
   string
+
+  // Boolean type
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::bool)
+  @lang.ts(SCSC::Lang::TS::Type::boolean)
   bool
-  bytes
-  timestamp
-  datetime
-  date
-  time
+
+  // UUID type
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::string)
   uuid
+
+  // Bytes type
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::Uint8Array)
+  bytes
+
+  // Temporal types
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::string)
+  timestamp
+
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::string)
+  datetime
+
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::string)
+  date
+
+  @lang.php(SCSC::Lang::PHP::Type::string)
+  @lang.ts(SCSC::Lang::TS::Type::string)
+  time
+
+  // Generic types
+  // --------------------------------------------------------------------------
+  @lang.php(SCSC::Lang::PHP::Type::mixed)
+  @lang.ts(SCSC::Lang::TS::Type::unknown)
   any
+
+  @lang.php(SCSC::Lang::PHP::Type::mixed)
+  @lang.ts(SCSC::Lang::TS::Type::unknown)
   mixed
 }

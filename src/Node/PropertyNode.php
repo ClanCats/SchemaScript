@@ -12,6 +12,8 @@ class PropertyNode extends BaseNode
 
     protected bool $isOptional = false;
 
+    protected ?CommentNode $comment = null;
+
     /**
      * @var array<AnnotationNode>
      */
@@ -57,6 +59,16 @@ class PropertyNode extends BaseNode
     public function setAnnotations(array $annotations): void
     {
         $this->annotations = $annotations;
+    }
+
+    public function getComment(): ?CommentNode
+    {
+        return $this->comment;
+    }
+
+    public function setComment(?CommentNode $comment): void
+    {
+        $this->comment = $comment;
     }
 
     public function accept(NodeVisitorInterface $visitor): void

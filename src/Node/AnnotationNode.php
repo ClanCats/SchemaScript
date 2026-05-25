@@ -7,12 +7,12 @@ class AnnotationNode extends BaseNode
     protected string $name;
 
     /**
-     * @var array<ValueNode>
+     * @var array<BaseNode>
      */
     protected array $arguments;
 
     /**
-     * @param array<ValueNode> $arguments
+     * @param array<BaseNode> $arguments
      */
     public function __construct(string $name, array $arguments = [])
     {
@@ -26,7 +26,7 @@ class AnnotationNode extends BaseNode
     }
 
     /**
-     * @return array<ValueNode>
+     * @return array<BaseNode>
      */
     public function getArguments(): array
     {

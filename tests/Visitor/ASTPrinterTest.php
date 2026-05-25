@@ -18,7 +18,65 @@ class ASTPrinterTest extends TestCase
 
     public function testPrintConceptFile(): void
     {
-        $code = file_get_contents(__DIR__ . '/../../concept.scsc');
+        $code = <<<'SCSC'
+import scsc/base
+
+[version] = 1
+[type] = {
+
+  @lang.php('int')
+  @lang.ts('bigint')
+  int64
+
+  @lang.php('int')
+  @lang.ts('number')
+  int32
+
+}
+
+ns MappingType {
+  const camelCase
+  const snake_case
+}
+
+User {
+  [version] = 2
+  [map:local] = MappingType::camelCase
+
+  // The users ID
+  id: int
+
+  @local(avatarImageId)
+  avatar_image_id: int?
+
+  avatar_image?: {
+    data: Image?
+  }
+
+  // the last message the user sent
+  last_messages: {
+    cached: bool
+    data: Message[]
+  }
+}
+
+Image {
+  colors: int[]
+  proxy: {
+    s1x1: string
+  }
+}
+
+Message {
+  unseen: bool
+  text: string
+  context: {
+    @enum("text", "image")
+    type: string
+    data: Image|User
+  }
+}
+SCSC;
         $scope = $this->parse($code);
 
         $printer = new ASTPrinter();
@@ -41,11 +99,13 @@ Scope
     Metadata: [version] = 2
     Metadata: [map:local] = MappingType::camelCase
     Property: id: int
+      Comment: The users ID
     Property: avatar_image_id: int?
       Annotation: @local(avatarImageId)
     Property: avatar_image?: {...}
       Property: data: Image?
     Property: last_messages: {...}
+      Comment: the last message the user sent
       Property: cached: bool
       Property: data: Message[]
   Model: Image
@@ -131,5 +191,15 @@ AST;
         $second = $printer->print($scope);
 
         $this->assertSame($first, $second);
+    }
+
+    public function testPrintPubTypeAlias(): void
+    {
+        $scope = $this->parse("[type] = {\n  pub MessageType = 'text'|'image'|'video'\n  hidden = int\n}");
+        $printer = new ASTPrinter();
+        $output = $printer->print($scope);
+        $this->assertStringContainsString("pub TypeAlias: MessageType", $output);
+        $this->assertStringContainsString("TypeAlias: hidden", $output);
+        $this->assertStringNotContainsString("pub TypeAlias: hidden", $output);
     }
 }

@@ -60,7 +60,8 @@ abstract class SchemaParser
     }
 
     /**
-     * Remove comments and spaces from the token stream.
+     * Remove spaces from the token stream. Comments are kept so parsers
+     * can attach them to AST nodes (e.g. property comments).
      *
      * @param array<T> $tokens
      * @return array<T>
@@ -68,7 +69,7 @@ abstract class SchemaParser
     protected function prepareTokens(array $tokens): array
     {
         return array_values(array_filter($tokens, function (T $token) {
-            return !$token->isType(T::TOKEN_COMMENT) && !$token->isType(T::TOKEN_SPACE);
+            return !$token->isType(T::TOKEN_SPACE);
         }));
     }
 

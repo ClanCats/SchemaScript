@@ -5,12 +5,12 @@ namespace ClanCats\SchemaScript\Schema;
 class Definition
 {
     /**
-     * @var array<array{key: string, value: mixed, attributes: array<string, mixed[]>}>
+     * @var array<array{key: string, value: mixed, attributes: AnnotationCollection}>
      */
     protected array $metadata;
 
     /**
-     * @var array<string, array<string, mixed>>
+     * @var array<string, TypeAlias>
      */
     protected array $typeAliases;
 
@@ -25,8 +25,8 @@ class Definition
     protected array $structs;
 
     /**
-     * @param array<array{key: string, value: mixed, attributes: array<string, mixed[]>}> $metadata
-     * @param array<string, array<string, mixed>> $typeAliases
+     * @param array<array{key: string, value: mixed, attributes: AnnotationCollection}> $metadata
+     * @param array<string, TypeAlias> $typeAliases
      * @param array<string, array<string, mixed>> $namespaces
      * @param array<string, Struct> $structs
      */
@@ -39,7 +39,7 @@ class Definition
     }
 
     /**
-     * @return array<array{key: string, value: mixed, attributes: array<string, mixed[]>}>
+     * @return array<array{key: string, value: mixed, attributes: AnnotationCollection}>
      */
     public function getMetadata(): array
     {
@@ -47,28 +47,36 @@ class Definition
     }
 
     /**
-     * @return array<string, array<string, mixed>>
+     * @return array<string, TypeAlias>
      */
     public function getTypeAliases(): array
     {
         return $this->typeAliases;
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function getTypeAlias(string $name): ?array
+    public function getTypeAlias(string $name): ?TypeAlias
     {
         return $this->typeAliases[$name] ?? null;
+    }
+
+    public function isTypeAliasPublic(string $name): bool
+    {
+        $alias = $this->typeAliases[$name] ?? null;
+        return $alias !== null && $alias->isPublic();
+    }
+
+    /**
+     * @return array<string, TypeAlias>
+     */
+    public function getPublicTypeAliases(): array
+    {
+        return array_filter($this->typeAliases, fn(TypeAlias $a) => $a->isPublic());
     }
 
     public function getTypeAliasResolvedType(string $name): ?Type
     {
         $alias = $this->typeAliases[$name] ?? null;
-        if ($alias === null) {
-            return null;
-        }
-        return $alias['resolvedType'] ?? null;
+        return $alias !== null ? $alias->getResolvedType() : null;
     }
 
     /**
@@ -143,5 +151,34 @@ class Definition
         }
 
         return $this->namespaces[$namespace][$constant];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $data = [];
+
+        if ($this->metadata) {
+            $data['metadata'] = array_map(function (array $entry) {
+                $entry['attributes'] = $entry['attributes']->toArray();
+                return $entry;
+            }, $this->metadata);
+        }
+
+        if ($this->typeAliases) {
+            $data['typeAliases'] = array_map(fn(TypeAlias $a) => $a->toArray(), $this->typeAliases);
+        }
+
+        if ($this->namespaces) {
+            $data['namespaces'] = $this->namespaces;
+        }
+
+        if ($this->structs) {
+            $data['structs'] = array_map(fn(Struct $s) => $s->toArray(), $this->structs);
+        }
+
+        return $data;
     }
 }

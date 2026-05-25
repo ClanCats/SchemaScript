@@ -9,6 +9,9 @@ use ClanCats\SchemaScript\Node\MetadataEntryNode;
 use ClanCats\SchemaScript\Node\ImportNode;
 use ClanCats\SchemaScript\Node\ModelDefinitionNode;
 use ClanCats\SchemaScript\Node\NamespaceNode;
+use ClanCats\SchemaScript\Node\ConstantNode;
+use ClanCats\SchemaScript\Node\ValueNode;
+use ClanCats\SchemaScript\Node\ReferenceNode;
 
 class ScopeParser extends SchemaParser
 {
@@ -23,7 +26,7 @@ class ScopeParser extends SchemaParser
     {
         $token = $this->currentToken();
 
-        if ($token->isType(T::TOKEN_LINE)) {
+        if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
             $this->skipToken();
             return;
         }
@@ -57,6 +60,45 @@ class ScopeParser extends SchemaParser
             /** @var NamespaceNode $namespace */
             $namespace = $this->parseChild(NamespaceParser::class);
             $this->scope->addNamespace($namespace);
+            return;
+        }
+
+        if ($token->isType(T::TOKEN_KEYWORD_CONST)) {
+            $this->skipToken();
+
+            $name = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+            $this->skipToken();
+
+            $constant = new ConstantNode($name);
+
+            if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_EQUAL)) {
+                $this->skipToken();
+                $valueToken = $this->currentToken();
+
+                if ($valueToken->isType(T::TOKEN_STRING) || $valueToken->isType(T::TOKEN_NUMBER)) {
+                    $constant->setValue(ValueNode::fromToken($valueToken));
+                    $this->skipToken();
+                } elseif ($valueToken->isType(T::TOKEN_IDENTIFIER)) {
+                    $identifier = $valueToken->getValue();
+                    $this->skipToken();
+
+                    if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+                        $parts = [$identifier];
+                        while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+                            $this->skipToken();
+                            $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+                            $this->skipToken();
+                        }
+                        $constant->setValue(new ReferenceNode(...$parts));
+                    } else {
+                        $constant->setValue(new ValueNode(ValueNode::TYPE_IDENTIFIER, $identifier));
+                    }
+                } else {
+                    throw $this->errorUnexpectedToken($valueToken);
+                }
+            }
+
+            $this->scope->addConstant($constant);
             return;
         }
 

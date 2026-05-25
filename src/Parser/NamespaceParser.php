@@ -15,7 +15,7 @@ class NamespaceParser extends SchemaParser
 
     protected function next(): void
     {
-        if ($this->currentToken()->isType(T::TOKEN_LINE)) {
+        if ($this->currentToken()->isType(T::TOKEN_LINE) || $this->currentToken()->isType(T::TOKEN_COMMENT)) {
             $this->skipToken();
             return;
         }
@@ -30,14 +30,14 @@ class NamespaceParser extends SchemaParser
         $bodyTokens = $this->getTokensUntilClosingScope();
 
         $this->namespace = new NamespaceNode($name);
-        $this->parseBody($bodyTokens);
+        $this->parseBody($this->namespace, $bodyTokens);
         $this->finish();
     }
 
     /**
      * @param array<T> $tokens
      */
-    protected function parseBody(array $tokens): void
+    protected function parseBody(NamespaceNode $target, array $tokens): void
     {
         $i = 0;
         $count = count($tokens);
@@ -45,8 +45,43 @@ class NamespaceParser extends SchemaParser
         while ($i < $count) {
             $token = $tokens[$i];
 
-            if ($token->isType(T::TOKEN_LINE)) {
+            if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
                 $i++;
+                continue;
+            }
+
+            if ($token->isType(T::TOKEN_KEYWORD_NS)) {
+                $i++;
+                if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_IDENTIFIER)) {
+                    throw $this->errorParsing("Expected identifier after 'ns'.");
+                }
+                $childName = $tokens[$i]->getValue();
+                $i++;
+
+                if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_SCOPE_OPEN)) {
+                    throw $this->errorParsing("Expected '{' after namespace name.");
+                }
+                $i++;
+
+                $depth = 1;
+                $childBodyTokens = [];
+                while ($i < $count) {
+                    if ($tokens[$i]->isType(T::TOKEN_SCOPE_OPEN)) {
+                        $depth++;
+                    } elseif ($tokens[$i]->isType(T::TOKEN_SCOPE_CLOSE)) {
+                        $depth--;
+                        if ($depth === 0) {
+                            $i++;
+                            break;
+                        }
+                    }
+                    $childBodyTokens[] = $tokens[$i];
+                    $i++;
+                }
+
+                $childNode = new NamespaceNode($childName);
+                $this->parseBody($childNode, $childBodyTokens);
+                $target->addChild($childNode);
                 continue;
             }
 
@@ -76,25 +111,29 @@ class NamespaceParser extends SchemaParser
                         $constant->setValue(ValueNode::fromToken($valueToken));
                         $i++;
                     } elseif ($valueToken->isType(T::TOKEN_IDENTIFIER)) {
-                        $identifier = $valueToken->getValue();
+                        $parts = [$valueToken->getValue()];
                         $i++;
 
-                        if ($i < $count && $tokens[$i]->isType(T::TOKEN_DOUBLE_COLON)) {
+                        while ($i < $count && $tokens[$i]->isType(T::TOKEN_DOUBLE_COLON)) {
                             $i++;
                             if ($i >= $count || !$tokens[$i]->isType(T::TOKEN_IDENTIFIER)) {
                                 throw $this->errorParsing("Expected identifier after '::'.");
                             }
-                            $constant->setValue(new ReferenceNode($identifier, $tokens[$i]->getValue()));
+                            $parts[] = $tokens[$i]->getValue();
                             $i++;
+                        }
+
+                        if (count($parts) >= 2) {
+                            $constant->setValue(new ReferenceNode(...$parts));
                         } else {
-                            $constant->setValue(new ValueNode(ValueNode::TYPE_IDENTIFIER, $identifier));
+                            $constant->setValue(new ValueNode(ValueNode::TYPE_IDENTIFIER, $parts[0]));
                         }
                     } else {
                         throw $this->errorUnexpectedToken($valueToken);
                     }
                 }
 
-                $this->namespace?->addConstant($constant);
+                $target->addConstant($constant);
                 continue;
             }
 

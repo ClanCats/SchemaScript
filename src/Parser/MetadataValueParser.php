@@ -51,10 +51,13 @@ class MetadataValueParser extends SchemaParser
         }
 
         if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
-            $this->skipToken();
-            $constant = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
-            $this->skipToken();
-            return new ReferenceNode($identifier, $constant);
+            $parts = [$identifier];
+            while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+                $this->skipToken();
+                $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+                $this->skipToken();
+            }
+            return new ReferenceNode(...$parts);
         }
 
         return new ValueNode(ValueNode::TYPE_IDENTIFIER, $identifier);
@@ -135,7 +138,7 @@ class MetadataValueParser extends SchemaParser
         while (!$parser->parserIsDone()) {
             $token = $parser->currentToken();
 
-            if ($token->isType(T::TOKEN_COMMA) || $token->isType(T::TOKEN_LINE)) {
+            if ($token->isType(T::TOKEN_COMMA) || $token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
                 $parser->skipToken();
                 continue;
             }
@@ -161,7 +164,7 @@ class MetadataValueParser extends SchemaParser
         while (!$parser->parserIsDone()) {
             $token = $parser->currentToken();
 
-            if ($token->isType(T::TOKEN_LINE)) {
+            if ($token->isType(T::TOKEN_LINE) || $token->isType(T::TOKEN_COMMENT)) {
                 $parser->skipToken();
                 continue;
             }

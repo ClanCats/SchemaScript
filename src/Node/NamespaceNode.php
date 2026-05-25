@@ -11,6 +11,11 @@ class NamespaceNode extends BaseNode
      */
     protected array $constants = [];
 
+    /**
+     * @var array<NamespaceNode>
+     */
+    protected array $children = [];
+
     public function __construct(string $name)
     {
         $this->name = $name;
@@ -32,6 +37,19 @@ class NamespaceNode extends BaseNode
     public function addConstant(ConstantNode $constant): void
     {
         $this->constants[] = $constant;
+    }
+
+    /**
+     * @return array<NamespaceNode>
+     */
+    public function getChildren(): array
+    {
+        return $this->children;
+    }
+
+    public function addChild(NamespaceNode $child): void
+    {
+        $this->children[] = $child;
     }
 
     public function accept(NodeVisitorInterface $visitor): void

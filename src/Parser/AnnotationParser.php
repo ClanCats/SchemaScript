@@ -6,13 +6,14 @@ use ClanCats\SchemaScript\Token as T;
 use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\AnnotationNode;
 use ClanCats\SchemaScript\Node\ValueNode;
+use ClanCats\SchemaScript\Node\ReferenceNode;
 
 class AnnotationParser extends SchemaParser
 {
     protected string $name = '';
 
     /**
-     * @var array<ValueNode>
+     * @var array<BaseNode>
      */
     protected array $arguments = [];
 
@@ -58,8 +59,20 @@ class AnnotationParser extends SchemaParser
             }
 
             if ($token->isType(T::TOKEN_IDENTIFIER)) {
-                $this->arguments[] = new ValueNode(ValueNode::TYPE_IDENTIFIER, $token->getValue());
+                $identifier = $token->getValue();
                 $this->skipToken();
+
+                if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+                    $parts = [$identifier];
+                    while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+                        $this->skipToken();
+                        $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+                        $this->skipToken();
+                    }
+                    $this->arguments[] = new ReferenceNode(...$parts);
+                } else {
+                    $this->arguments[] = new ValueNode(ValueNode::TYPE_IDENTIFIER, $identifier);
+                }
                 continue;
             }
 

@@ -14,13 +14,13 @@ class Struct
     protected array $properties;
 
     /**
-     * @var array<array{key: string, value: mixed, attributes: array<string, mixed[]>}>
+     * @var array<array{key: string, value: mixed, attributes: AnnotationCollection}>
      */
     protected array $metadata;
 
     /**
      * @param array<StructProperty> $properties
-     * @param array<array{key: string, value: mixed, attributes: array<string, mixed[]>}> $metadata
+     * @param array<array{key: string, value: mixed, attributes: AnnotationCollection}> $metadata
      */
     public function __construct(string $name, bool $isInline, array $properties = [], array $metadata = [])
     {
@@ -49,7 +49,7 @@ class Struct
     }
 
     /**
-     * @return array<array{key: string, value: mixed, attributes: array<string, mixed[]>}>
+     * @return array<array{key: string, value: mixed, attributes: AnnotationCollection}>
      */
     public function getMetadata(): array
     {
@@ -67,5 +67,29 @@ class Struct
             }
         }
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $data = [
+            'name' => $this->name,
+            'properties' => array_map(fn(StructProperty $p) => $p->toArray(), $this->properties),
+        ];
+
+        if ($this->isInline) {
+            $data['inline'] = true;
+        }
+
+        if ($this->metadata) {
+            $data['metadata'] = array_map(function (array $entry) {
+                $entry['attributes'] = $entry['attributes']->toArray();
+                return $entry;
+            }, $this->metadata);
+        }
+
+        return $data;
     }
 }

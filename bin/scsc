@@ -19,6 +19,7 @@ use ClanCats\SchemaScript\ErrorFormatter;
 use ClanCats\SchemaScript\Exception\LexerException;
 use ClanCats\SchemaScript\Exception\ParserException;
 use ClanCats\SchemaScript\Exception\EvaluatorException;
+use ClanCats\SchemaScript\SchemaNamespace;
 use ClanCats\SchemaScript\Builder;
 
 if (in_array('--list-gen', $argv, true)) {
@@ -36,6 +37,7 @@ if (in_array('--list-gen', $argv, true)) {
 
 if ($argc < 2) {
     fwrite(STDERR, "Usage: scsc <file.scsc>\n");
+    fwrite(STDERR, "       scsc ast <file.scsc>\n");
     fwrite(STDERR, "       scsc build\n");
     fwrite(STDERR, "       scsc gen <generator> <file.scsc> [--output=<dir>] [--stdout]\n");
     exit(1);
@@ -158,6 +160,37 @@ if ($argv[1] === 'gen') {
     exit(0);
 }
 
+if ($argv[1] === 'ast') {
+    if ($argc < 3) {
+        fwrite(STDERR, "Usage: scsc ast <file.scsc>\n");
+        exit(1);
+    }
+
+    $file = $argv[2];
+
+    if (!file_exists($file)) {
+        fwrite(STDERR, "Error: File not found: {$file}\n");
+        exit(1);
+    }
+
+    $code = file_get_contents($file);
+
+    try {
+        $tokens = (new Lexer($code, $file))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+    } catch (LexerException|ParserException $e) {
+        if ($e->getSourceCode() === null) {
+            $e->setSourceContext($e->getSourceLine() ?? 0, $e->getSourceColumn() ?? 0, $e->getSourceFile(), $code, $e->getSourceLength());
+        }
+        fwrite(STDERR, ErrorFormatter::format($e) . "\n");
+        exit(1);
+    }
+
+    $printer = new ASTPrinter();
+    echo $printer->print($scope);
+    exit(0);
+}
+
 $file = $argv[1];
 
 if (!file_exists($file)) {
@@ -168,15 +201,21 @@ if (!file_exists($file)) {
 $code = file_get_contents($file);
 
 try {
+    $namespace = new SchemaNamespace();
+    $namespace->importStdlib();
     $tokens = (new Lexer($code, $file))->tokens();
     $scope = (new ScopeParser($tokens))->parse();
+    $definition = (new SchemaEvaluator($namespace))->evaluate($scope);
 } catch (LexerException|ParserException $e) {
     if ($e->getSourceCode() === null) {
         $e->setSourceContext($e->getSourceLine() ?? 0, $e->getSourceColumn() ?? 0, $e->getSourceFile(), $code, $e->getSourceLength());
     }
     fwrite(STDERR, ErrorFormatter::format($e) . "\n");
     exit(1);
+} catch (EvaluatorException $e) {
+    fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
+    exit(1);
 }
 
-$printer = new ASTPrinter();
-echo $printer->print($scope);
+$json = json_encode($definition->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+echo preg_replace_callback('/^ +/m', fn($m) => str_repeat(' ', intdiv(strlen($m[0]), 4)), $json) . "\n";

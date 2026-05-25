@@ -7,6 +7,7 @@ use ClanCats\SchemaScript\Node\BaseNode;
 use ClanCats\SchemaScript\Node\ModelDefinitionNode;
 use ClanCats\SchemaScript\Node\MetadataEntryNode;
 use ClanCats\SchemaScript\Node\PropertyNode;
+use ClanCats\SchemaScript\Node\CommentNode;
 use ClanCats\SchemaScript\Node\AnnotationNode;
 
 class ModelBodyParser extends SchemaParser
@@ -18,6 +19,11 @@ class ModelBodyParser extends SchemaParser
      */
     protected array $pendingAnnotations = [];
 
+    /**
+     * @var array<string>
+     */
+    protected array $pendingComments = [];
+
     protected function prepare(): void
     {
         $this->model = new ModelDefinitionNode();
@@ -26,6 +32,14 @@ class ModelBodyParser extends SchemaParser
     protected function next(): void
     {
         $token = $this->currentToken();
+
+        if ($token->isType(T::TOKEN_COMMENT)) {
+            $raw = $token->getValue();
+            $text = preg_replace('/^\/\/\s?/', '', $raw);
+            $this->pendingComments[] = $text;
+            $this->skipToken();
+            return;
+        }
 
         if ($token->isType(T::TOKEN_LINE)) {
             $this->skipToken();
@@ -40,6 +54,7 @@ class ModelBodyParser extends SchemaParser
         }
 
         if ($token->isType(T::TOKEN_METADATA_KEY)) {
+            $this->pendingComments = [];
             if (!empty($this->pendingAnnotations)) {
                 $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
                 throw $this->errorParsing(sprintf(
@@ -68,6 +83,7 @@ class ModelBodyParser extends SchemaParser
             // Disambiguate: property (name: type) vs child model (Name { ... })
             $next = $this->nextToken();
             if ($next !== null && $next->isType(T::TOKEN_SCOPE_OPEN)) {
+                $this->pendingComments = [];
                 /** @var ModelDefinitionNode $childModel */
                 $childModel = $this->parseChild(ModelDefinitionParser::class);
                 $this->model->addChildModel($childModel);
@@ -80,6 +96,10 @@ class ModelBodyParser extends SchemaParser
             $property = $parser->parse();
             $property->setAnnotations($this->pendingAnnotations);
             $this->pendingAnnotations = [];
+            if (!empty($this->pendingComments)) {
+                $property->setComment(new CommentNode($this->pendingComments));
+                $this->pendingComments = [];
+            }
             $this->model->addProperty($property);
             return;
         }

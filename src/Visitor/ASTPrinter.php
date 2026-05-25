@@ -8,6 +8,7 @@ use ClanCats\SchemaScript\Node\ScopeNode;
 use ClanCats\SchemaScript\Node\ModelDefinitionNode;
 use ClanCats\SchemaScript\Node\PropertyNode;
 use ClanCats\SchemaScript\Node\AnnotationNode;
+use ClanCats\SchemaScript\Node\CommentNode;
 use ClanCats\SchemaScript\Node\ValueNode;
 use ClanCats\SchemaScript\Node\MetadataEntryNode;
 use ClanCats\SchemaScript\Node\MetadataBlockNode;
@@ -119,6 +120,9 @@ class ASTPrinter implements NodeVisitorInterface
         foreach ($node->getTypeAliases() as $alias) {
             $alias->accept($this);
         }
+        foreach ($node->getConstants() as $constant) {
+            $constant->accept($this);
+        }
         foreach ($node->getNamespaces() as $namespace) {
             $namespace->accept($this);
         }
@@ -152,6 +156,9 @@ class ASTPrinter implements NodeVisitorInterface
         $opt = $node->isOptional() ? '?' : '';
         $this->line('Property: ' . $node->getName() . $opt . ': ' . $this->typeToString($node->getType()));
         $this->depth++;
+        if ($node->getComment() !== null) {
+            $node->getComment()->accept($this);
+        }
         foreach ($node->getAnnotations() as $annotation) {
             $annotation->accept($this);
         }
@@ -166,7 +173,7 @@ class ASTPrinter implements NodeVisitorInterface
         $args = '';
         if (count($node->getArguments()) > 0) {
             $args = '(' . implode(', ', array_map(
-                fn(ValueNode $v) => $this->valueToString($v),
+                fn(BaseNode $v) => $this->valueToString($v),
                 $node->getArguments()
             )) . ')';
         }
@@ -229,12 +236,17 @@ class ASTPrinter implements NodeVisitorInterface
         foreach ($node->getConstants() as $constant) {
             $constant->accept($this);
         }
+        foreach ($node->getChildren() as $child) {
+            $child->accept($this);
+        }
         $this->depth--;
     }
 
     public function visitConstant(ConstantNode $node): void
     {
-        $this->line('Constant: ' . $node->getName());
+        $value = $node->getValue();
+        $suffix = $value !== null ? ' = ' . $this->valueToString($value) : '';
+        $this->line('Constant: ' . $node->getName() . $suffix);
     }
 
     public function visitReference(ReferenceNode $node): void
@@ -246,7 +258,8 @@ class ASTPrinter implements NodeVisitorInterface
     {
         $typeDef = $node->getTypeDefinition();
         $suffix = $typeDef !== null ? ' = ' . $this->typeToString($typeDef) : '';
-        $this->line('TypeAlias: ' . $node->getName() . $suffix);
+        $prefix = $node->isPublic() ? 'pub ' : '';
+        $this->line($prefix . 'TypeAlias: ' . $node->getName() . $suffix);
         $this->depth++;
         foreach ($node->getAnnotations() as $annotation) {
             $annotation->accept($this);
@@ -306,5 +319,10 @@ class ASTPrinter implements NodeVisitorInterface
     public function visitStringLiteralType(StringLiteralTypeNode $node): void
     {
         $this->line("StringLiteral: '" . $node->getValue() . "'");
+    }
+
+    public function visitComment(CommentNode $node): void
+    {
+        $this->line('Comment: ' . $node->getText());
     }
 }

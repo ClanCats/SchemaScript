@@ -30,4 +30,5 @@ interface NodeVisitorInterface
     public function visitImport(ImportNode $node): void;
     public function visitInlineObjectType(InlineObjectTypeNode $node): void;
     public function visitStringLiteralType(StringLiteralTypeNode $node): void;
+    public function visitComment(CommentNode $node): void;
 }

@@ -15,6 +15,8 @@ class TypeAliasNode extends BaseNode
 
     protected ?TypeNode $typeDefinition = null;
 
+    protected bool $isPublic = false;
+
     public function __construct(string $name)
     {
         $this->name = $name;
@@ -49,6 +51,16 @@ class TypeAliasNode extends BaseNode
     public function setTypeDefinition(?TypeNode $typeDefinition): void
     {
         $this->typeDefinition = $typeDefinition;
+    }
+
+    public function isPublic(): bool
+    {
+        return $this->isPublic;
+    }
+
+    public function setIsPublic(bool $isPublic): void
+    {
+        $this->isPublic = $isPublic;
     }
 
     public function accept(NodeVisitorInterface $visitor): void

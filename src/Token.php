@@ -72,6 +72,7 @@ class Token
     const TOKEN_SPACE = 20;
     const TOKEN_KEYWORD_IMPORT = 21;
     const TOKEN_SLASH = 22;
+    const TOKEN_KEYWORD_PUB = 23;
 
     /**
      * The constructor

@@ -576,7 +576,65 @@ class ParserTest extends TestCase
 
     public function testMetadataExamplesFile(): void
     {
-        $code = file_get_contents(__DIR__ . '/../examples/metadata.scsc');
+        $code = <<<'SCSC'
+[version] = 1
+
+[somthing] = {
+  foo = 'bar'
+  nested = {
+    deeper = {
+      value = 42
+    }
+  }
+}
+
+[colors] = {'red', 'green', 'blue'}
+
+User {
+  [spcial] = 'value'
+  [alias] = {
+    frontend = 'Account'
+    backend = 'User'
+  }
+
+  id: int
+}
+
+[block] = {
+    [keyA] = 'example1'
+    [keyB] = 'example2'
+}
+
+[metadata] = {
+  string = 'example'
+  int = 42
+  float = 3.14
+  bool = true
+  array = {'a', 'b', 'c'}
+  object = {
+    key1 = 'value1'
+    key2 = 'value2'
+  }
+}
+
+[metadataWithAttributes] = {
+  @a('example')
+  value = 'fooo'
+}
+
+[metadataWithIdentifier] = {
+  @a('example')
+  value = someIdentifier
+}
+
+[metadataWithIdentifierOnly] = {
+  @a('example')
+  someIdentifier
+
+  @a('another')
+  anotherIdentifier
+}
+SCSC;
         $scope = $this->parse($code);
 
         $metadata = $scope->getMetadata();
@@ -1013,6 +1071,72 @@ class ParserTest extends TestCase
         $this->assertEquals('lang.php', $aliases[0]->getAnnotations()[0]->getName());
     }
 
+    public function testTypeBlockUnknownKeywordThrows(): void
+    {
+        $this->expectException(ParserException::class);
+        $this->expectExceptionMessage('Unknown keyword "bla"');
+        $this->parse("[type] = {\n  bla MessageType = 'text'|'image'|'video'\n}");
+    }
+
+    public function testTypeBlockPubAlias(): void
+    {
+        $code = "[type] = {\n  pub MessageType = 'text'|'image'|'video'\n}";
+        $scope = $this->parse($code);
+        $aliases = $scope->getTypeAliases();
+        $this->assertCount(1, $aliases);
+        $this->assertEquals('MessageType', $aliases[0]->getName());
+        $this->assertTrue($aliases[0]->isPublic());
+        $this->assertNotNull($aliases[0]->getTypeDefinition());
+    }
+
+    public function testTypeBlockNonPubAlias(): void
+    {
+        $code = "[type] = {\n  MyType = string\n}";
+        $scope = $this->parse($code);
+        $aliases = $scope->getTypeAliases();
+        $this->assertCount(1, $aliases);
+        $this->assertFalse($aliases[0]->isPublic());
+    }
+
+    public function testTypeBlockPubBareDeclaration(): void
+    {
+        $code = "[type] = {\n  pub int64\n}";
+        $scope = $this->parse($code);
+        $aliases = $scope->getTypeAliases();
+        $this->assertCount(1, $aliases);
+        $this->assertEquals('int64', $aliases[0]->getName());
+        $this->assertTrue($aliases[0]->isPublic());
+        $this->assertNull($aliases[0]->getTypeDefinition());
+    }
+
+    public function testTypeBlockPubInlineObject(): void
+    {
+        $code = "[type] = {\n  pub position = {\n    x: int\n    y: int\n  }\n}";
+        $scope = $this->parse($code);
+        $aliases = $scope->getTypeAliases();
+        $this->assertCount(1, $aliases);
+        $this->assertEquals('position', $aliases[0]->getName());
+        $this->assertTrue($aliases[0]->isPublic());
+        $this->assertNotNull($aliases[0]->getTypeDefinition());
+    }
+
+    public function testTypeBlockPubWithoutNameThrows(): void
+    {
+        $this->expectException(ParserException::class);
+        $this->expectExceptionMessage('Expected type alias name after "pub"');
+        $this->parse("[type] = {\n  pub\n}");
+    }
+
+    public function testTypeBlockMixedPubAndNonPub(): void
+    {
+        $code = "[type] = {\n  pub Visible = string\n  hidden = int\n}";
+        $scope = $this->parse($code);
+        $aliases = $scope->getTypeAliases();
+        $this->assertCount(2, $aliases);
+        $this->assertTrue($aliases[0]->isPublic());
+        $this->assertFalse($aliases[1]->isPublic());
+    }
+
     // --- ModelDefinitionParser ---
 
     public function testSimpleModel(): void
@@ -1066,7 +1190,65 @@ class ParserTest extends TestCase
 
     public function testConceptFile(): void
     {
-        $code = file_get_contents(__DIR__ . '/../concept.scsc');
+        $code = <<<'SCSC'
+import scsc/base
+
+[version] = 1
+[type] = {
+
+  @lang.php('int')
+  @lang.ts('bigint')
+  int64
+
+  @lang.php('int')
+  @lang.ts('number')
+  int32
+
+}
+
+ns MappingType {
+  const camelCase
+  const snake_case
+}
+
+User {
+  [version] = 2
+  [map:local] = MappingType::camelCase
+
+  // The users ID
+  id: int
+
+  @local(avatarImageId)
+  avatar_image_id: int?
+
+  avatar_image?: {
+    data: Image?
+  }
+
+  // the last message the user sent
+  last_messages: {
+    cached: bool
+    data: Message[]
+  }
+}
+
+Image {
+  colors: int[]
+  proxy: {
+    s1x1: string
+  }
+}
+
+Message {
+  unseen: bool
+  text: string
+  context: {
+    @enum("text", "image")
+    type: string
+    data: Image|User
+  }
+}
+SCSC;
         $scope = $this->parse($code);
 
         // Global metadata

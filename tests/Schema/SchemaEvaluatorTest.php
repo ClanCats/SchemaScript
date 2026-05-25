@@ -8,6 +8,7 @@ use ClanCats\SchemaScript\Parser\ScopeParser;
 use ClanCats\SchemaScript\Schema\SchemaEvaluator;
 use ClanCats\SchemaScript\Schema\Definition;
 use ClanCats\SchemaScript\Schema\Type;
+use ClanCats\SchemaScript\Schema\TypeKind;
 use ClanCats\SchemaScript\SchemaNamespace;
 use ClanCats\SchemaScript\Exception\EvaluatorException;
 
@@ -39,7 +40,65 @@ class SchemaEvaluatorTest extends TestCase
     private function evaluateConceptFile(): Definition
     {
         $ns = $this->createNamespaceWithStdlib();
-        $code = file_get_contents(__DIR__ . '/../../concept.scsc');
+        $code = <<<'SCSC'
+import scsc/base
+
+[version] = 1
+[type] = {
+
+  @lang.php('int')
+  @lang.ts('bigint')
+  int64
+
+  @lang.php('int')
+  @lang.ts('number')
+  int32
+
+}
+
+ns MappingType {
+  const camelCase
+  const snake_case
+}
+
+User {
+  [version] = 2
+  [map:local] = MappingType::camelCase
+
+  // The users ID
+  id: int
+
+  @local(avatarImageId)
+  avatar_image_id: int?
+
+  avatar_image?: {
+    data: Image?
+  }
+
+  // the last message the user sent
+  last_messages: {
+    cached: bool
+    data: Message[]
+  }
+}
+
+Image {
+  colors: int[]
+  proxy: {
+    s1x1: string
+  }
+}
+
+Message {
+  unseen: bool
+  text: string
+  context: {
+    @enum("text", "image")
+    type: string
+    data: Image|User
+  }
+}
+SCSC;
         $tokens = (new Lexer($code))->tokens();
         $scope = (new ScopeParser($tokens))->parse();
         return (new SchemaEvaluator($ns))->evaluate($scope);
@@ -50,10 +109,11 @@ class SchemaEvaluatorTest extends TestCase
         $def = $this->evaluateConceptFile();
         $metadata = $def->getMetadata();
 
-        $this->assertCount(1, $metadata);
+        $this->assertCount(2, $metadata);
         $this->assertSame('version', $metadata[0]['key']);
         $this->assertSame(1, $metadata[0]['value']);
-        $this->assertSame([], $metadata[0]['attributes']);
+        $this->assertTrue($metadata[0]['attributes']->isEmpty());
+        $this->assertSame('SCSCConfig', $metadata[1]['key']);
     }
 
     public function testTypeAliases(): void
@@ -64,13 +124,11 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertArrayHasKey('int64', $aliases);
         $this->assertArrayHasKey('int32', $aliases);
 
-        $int64 = $aliases['int64']['annotations'];
-        $this->assertSame(['int'], $int64['lang.php']);
-        $this->assertSame(['bigint'], $int64['lang.ts']);
+        $this->assertSame('int', $aliases['int64']->getLangType('php'));
+        $this->assertSame('bigint', $aliases['int64']->getLangType('ts'));
 
-        $int32 = $aliases['int32']['annotations'];
-        $this->assertSame(['int'], $int32['lang.php']);
-        $this->assertSame(['number'], $int32['lang.ts']);
+        $this->assertSame('int', $aliases['int32']->getLangType('php'));
+        $this->assertSame('number', $aliases['int32']->getLangType('ts'));
     }
 
     public function testNamespaces(): void
@@ -136,29 +194,29 @@ class SchemaEvaluatorTest extends TestCase
 
         // id: int
         $this->assertSame('id', $props[0]->getName());
-        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $props[0]->getType()->getKind());
         $this->assertSame('int', $props[0]->getType()->getName());
         $this->assertFalse($props[0]->isOptional());
 
         // avatar_image_id: int?
         $this->assertSame('avatar_image_id', $props[1]->getName());
         $this->assertTrue($props[1]->getType()->isNullable());
-        $this->assertSame(Type::KIND_SIMPLE, $props[1]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Simple, $props[1]->getType()->getInnerType()->getKind());
         $this->assertSame('int', $props[1]->getType()->getInnerType()->getName());
         $this->assertFalse($props[1]->isOptional());
         $this->assertTrue($props[1]->hasAnnotation('local'));
-        $this->assertSame(['avatarImageId'], $props[1]->getAnnotation('local'));
+        $this->assertSame(['avatarImageId'], $props[1]->getAnnotation('local')->getArguments());
 
         // avatar_image?: { data: Image? }
         $this->assertSame('avatar_image', $props[2]->getName());
         $this->assertTrue($props[2]->isOptional());
-        $this->assertSame(Type::KIND_REFERENCE, $props[2]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $props[2]->getType()->getKind());
         $this->assertSame('UserAvatarImage', $props[2]->getType()->getName());
 
         // last_messages: { cached: bool  data: Message[] }
         $this->assertSame('last_messages', $props[3]->getName());
         $this->assertFalse($props[3]->isOptional());
-        $this->assertSame(Type::KIND_REFERENCE, $props[3]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $props[3]->getType()->getKind());
         $this->assertSame('UserLastMessages', $props[3]->getType()->getName());
     }
 
@@ -173,7 +231,7 @@ class SchemaEvaluatorTest extends TestCase
         // data: Image?
         $this->assertSame('data', $props[0]->getName());
         $this->assertTrue($props[0]->getType()->isNullable());
-        $this->assertSame(Type::KIND_REFERENCE, $props[0]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Reference, $props[0]->getType()->getInnerType()->getKind());
         $this->assertSame('Image', $props[0]->getType()->getInnerType()->getName());
     }
 
@@ -187,13 +245,13 @@ class SchemaEvaluatorTest extends TestCase
 
         // cached: bool
         $this->assertSame('cached', $props[0]->getName());
-        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $props[0]->getType()->getKind());
         $this->assertSame('bool', $props[0]->getType()->getName());
 
         // data: Message[]
         $this->assertSame('data', $props[1]->getName());
-        $this->assertSame(Type::KIND_ARRAY, $props[1]->getType()->getKind());
-        $this->assertSame(Type::KIND_REFERENCE, $props[1]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[1]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $props[1]->getType()->getInnerType()->getKind());
         $this->assertSame('Message', $props[1]->getType()->getInnerType()->getName());
     }
 
@@ -207,13 +265,13 @@ class SchemaEvaluatorTest extends TestCase
 
         // colors: int[]
         $this->assertSame('colors', $props[0]->getName());
-        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
-        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $props[0]->getType()->getInnerType()->getKind());
         $this->assertSame('int', $props[0]->getType()->getInnerType()->getName());
 
         // proxy: { s1x1: string }
         $this->assertSame('proxy', $props[1]->getName());
-        $this->assertSame(Type::KIND_REFERENCE, $props[1]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $props[1]->getType()->getKind());
         $this->assertSame('ImageProxy', $props[1]->getType()->getName());
     }
 
@@ -227,19 +285,19 @@ class SchemaEvaluatorTest extends TestCase
 
         // type: string with @enum annotation
         $this->assertSame('type', $props[0]->getName());
-        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $props[0]->getType()->getKind());
         $this->assertSame('string', $props[0]->getType()->getName());
         $this->assertTrue($props[0]->hasAnnotation('enum'));
-        $this->assertSame(['text', 'image'], $props[0]->getAnnotation('enum'));
+        $this->assertSame(['text', 'image'], $props[0]->getAnnotation('enum')->getArguments());
 
         // data: Image|User
         $this->assertSame('data', $props[1]->getName());
-        $this->assertSame(Type::KIND_UNION, $props[1]->getType()->getKind());
+        $this->assertSame(TypeKind::Union, $props[1]->getType()->getKind());
         $unionTypes = $props[1]->getType()->getUnionTypes();
         $this->assertCount(2, $unionTypes);
-        $this->assertSame(Type::KIND_REFERENCE, $unionTypes[0]->getKind());
+        $this->assertSame(TypeKind::Reference, $unionTypes[0]->getKind());
         $this->assertSame('Image', $unionTypes[0]->getName());
-        $this->assertSame(Type::KIND_REFERENCE, $unionTypes[1]->getKind());
+        $this->assertSame(TypeKind::Reference, $unionTypes[1]->getKind());
         $this->assertSame('User', $unionTypes[1]->getName());
     }
 
@@ -253,7 +311,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertCount(2, $struct->getProperties());
 
         $this->assertSame('name', $struct->getProperties()[0]->getName());
-        $this->assertSame(Type::KIND_SIMPLE, $struct->getProperties()[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $struct->getProperties()[0]->getType()->getKind());
         $this->assertSame('string', $struct->getProperties()[0]->getType()->getName());
     }
 
@@ -299,11 +357,12 @@ class SchemaEvaluatorTest extends TestCase
     {
         $def = $this->evaluateCode("[version] = 1\n[version] = 2\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $this->assertCount(2, $metadata);
+        $this->assertCount(3, $metadata);
         $this->assertSame('version', $metadata[0]['key']);
         $this->assertSame(1, $metadata[0]['value']);
         $this->assertSame('version', $metadata[1]['key']);
         $this->assertSame(2, $metadata[1]['value']);
+        $this->assertSame('SCSCConfig', $metadata[2]['key']);
     }
 
     public function testDuplicateAnnotationThrows(): void
@@ -363,7 +422,7 @@ class SchemaEvaluatorTest extends TestCase
     {
         $def = $this->evaluateCode("[config] = {\n  foo = 'bar'\n  num = 42\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $this->assertCount(1, $metadata);
+        $this->assertCount(2, $metadata);
         $this->assertSame('config', $metadata[0]['key']);
         $this->assertIsArray($metadata[0]['value']);
         $entries = $metadata[0]['value'];
@@ -410,8 +469,8 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertCount(1, $entries);
         $this->assertSame('value', $entries[0]['key']);
         $this->assertSame('fooo', $entries[0]['value']);
-        $this->assertArrayHasKey('a', $entries[0]['attributes']);
-        $this->assertSame(['example'], $entries[0]['attributes']['a']);
+        $this->assertTrue($entries[0]['attributes']->has('a'));
+        $this->assertSame(['example'], $entries[0]['attributes']->get('a')->getArguments());
     }
 
     public function testMetadataStandaloneIdentifier(): void
@@ -422,7 +481,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertCount(1, $entries);
         $this->assertSame('someId', $entries[0]['key']);
         $this->assertNull($entries[0]['value']);
-        $this->assertArrayHasKey('a', $entries[0]['attributes']);
+        $this->assertTrue($entries[0]['attributes']->has('a'));
     }
 
     public function testMetadataWithMetadataKeyEntries(): void
@@ -457,7 +516,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertArrayHasKey('attributes', $entry);
         $this->assertSame('key', $entry['key']);
         $this->assertSame('val', $entry['value']);
-        $this->assertSame([], $entry['attributes']);
+        $this->assertTrue($entry['attributes']->isEmpty());
     }
 
     public function testMetadataListWithNumbers(): void
@@ -520,10 +579,10 @@ class SchemaEvaluatorTest extends TestCase
         $entry = $def->getMetadata()[0]['value'][0];
         $this->assertSame('entry', $entry['key']);
         $this->assertSame('val', $entry['value']);
-        $this->assertArrayHasKey('first', $entry['attributes']);
-        $this->assertSame([], $entry['attributes']['first']);
-        $this->assertArrayHasKey('second', $entry['attributes']);
-        $this->assertSame(['a', 'b'], $entry['attributes']['second']);
+        $this->assertTrue($entry['attributes']->has('first'));
+        $this->assertSame([], $entry['attributes']->get('first')->getArguments());
+        $this->assertTrue($entry['attributes']->has('second'));
+        $this->assertSame(['a', 'b'], $entry['attributes']->get('second')->getArguments());
     }
 
     public function testMetadataStandaloneIdentifierEvaluated(): void
@@ -534,17 +593,17 @@ class SchemaEvaluatorTest extends TestCase
 
         $this->assertSame('myFlag', $entries[0]['key']);
         $this->assertNull($entries[0]['value']);
-        $this->assertArrayHasKey('tag', $entries[0]['attributes']);
-        $this->assertSame(['x'], $entries[0]['attributes']['tag']);
+        $this->assertTrue($entries[0]['attributes']->has('tag'));
+        $this->assertSame(['x'], $entries[0]['attributes']->get('tag')->getArguments());
 
         $this->assertSame('myOther', $entries[1]['key']);
         $this->assertNull($entries[1]['value']);
-        $this->assertArrayHasKey('other', $entries[1]['attributes']);
-        $this->assertSame([], $entries[1]['attributes']['other']);
+        $this->assertTrue($entries[1]['attributes']->has('other'));
+        $this->assertSame([], $entries[1]['attributes']->get('other')->getArguments());
 
         $this->assertSame('bare', $entries[2]['key']);
         $this->assertNull($entries[2]['value']);
-        $this->assertSame([], $entries[2]['attributes']);
+        $this->assertTrue($entries[2]['attributes']->isEmpty());
     }
 
     public function testMetadataDuplicateBlockKeys(): void
@@ -569,7 +628,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertSame('b', $entries[1]['value']);
         $this->assertSame('standaloneId', $entries[2]['key']);
         $this->assertNull($entries[2]['value']);
-        $this->assertArrayHasKey('tag', $entries[2]['attributes']);
+        $this->assertTrue($entries[2]['attributes']->has('tag'));
     }
 
     public function testMetadataEmptyBlockEvaluated(): void
@@ -657,21 +716,26 @@ class SchemaEvaluatorTest extends TestCase
         $def = (new SchemaEvaluator($ns))->evaluate($scope);
 
         $metadata = $def->getMetadata();
-        $this->assertCount(2, $metadata);
+        $this->assertCount(4, $metadata);
 
         $this->assertSame('version', $metadata[0]['key']);
         $this->assertSame(1, $metadata[0]['value']);
 
         $this->assertSame('generate', $metadata[1]['key']);
         $generate = $metadata[1]['value'];
-        $this->assertCount(1, $generate);
+        $this->assertCount(2, $generate);
 
         $this->assertSame('php.mappers', $generate[0]['key']);
         $v1 = $generate[0]['value'];
         $this->assertSame('output', $v1[0]['key']);
-        $this->assertSame('src/Mappers/', $v1[0]['value']);
+        $this->assertSame('output/php/Mappers/', $v1[0]['value']);
         $this->assertSame('namespace', $v1[1]['key']);
         $this->assertSame('IntegrationEx\\Mappers\\', $v1[1]['value']);
+
+        $this->assertSame('ts.types', $generate[1]['key']);
+        $v2 = $generate[1]['value'];
+        $this->assertSame('output', $v2[0]['key']);
+        $this->assertSame('output/ts/types/', $v2[0]['value']);
     }
 
     // -------------------------------------------------------
@@ -730,24 +794,24 @@ class SchemaEvaluatorTest extends TestCase
     public function testLocalTypeAliasIsValid(): void
     {
         $def = $this->evaluateCode("[type] = {\n  custom_id\n}\nFoo {\n  id: custom_id\n}");
-        $this->assertSame(Type::KIND_SIMPLE, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
         $this->assertSame('custom_id', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
     }
 
     public function testAnnotatedTypeAliasIsAlias(): void
     {
         $def = $this->evaluateCode("[type] = {\n  @lang.php('int')\n  myint\n}\nFoo {\n  id: myint\n}");
-        $this->assertSame(Type::KIND_ALIAS, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
         $this->assertSame('myint', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
     }
 
-    public function testStdlibBuiltinTypesAreSimple(): void
+    public function testStdlibBuiltinTypesAreAlias(): void
     {
-        $def = $this->evaluateCode("Foo {\n  a: int\n  b: string\n  c: bool\n  d: float\n  e: uuid\n  f: timestamp\n}");
+        $def = $this->evaluateCode("Foo {\n  a: int\n  b: string\n  c: bool\n  d: float\n}");
         $props = $def->getStruct('Foo')->getProperties();
         foreach ($props as $prop) {
-            $this->assertSame(Type::KIND_SIMPLE, $prop->getType()->getKind(),
-                sprintf('Expected "%s" to be KIND_SIMPLE', $prop->getName()));
+            $this->assertSame(TypeKind::Simple, $prop->getType()->getKind(),
+                sprintf('Expected "%s" to be KIND_ALIAS', $prop->getName()));
         }
     }
 
@@ -774,17 +838,17 @@ class SchemaEvaluatorTest extends TestCase
     public function testModelReferenceStillWorksWithValidation(): void
     {
         $def = $this->evaluateCode("Bar {\n  x: int\n}\nFoo {\n  bar: Bar\n}");
-        $this->assertSame(Type::KIND_REFERENCE, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
         $this->assertSame('Bar', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
     }
 
     public function testLocalTypeOverridesImportedType(): void
     {
         $def = $this->evaluateCode("[type] = {\n  @lang.php('int')\n  @lang.ts('bigint')\n  int64\n}\nFoo {\n  id: int64\n}");
-        $this->assertSame(Type::KIND_ALIAS, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
         $aliases = $def->getTypeAliases();
         $this->assertArrayHasKey('int64', $aliases);
-        $this->assertSame(['int'], $aliases['int64']['annotations']['lang.php']);
+        $this->assertSame('int', $aliases['int64']->getLangType('php'));
     }
 
     public function testAllStdlibTypesResolvable(): void
@@ -793,9 +857,7 @@ class SchemaEvaluatorTest extends TestCase
             'int', 'int8', 'int16', 'int32', 'int64',
             'uint', 'uint8', 'uint16', 'uint32', 'uint64',
             'float', 'float32', 'float64', 'double',
-            'string', 'bool', 'bytes',
-            'timestamp', 'datetime', 'date', 'time',
-            'uuid', 'any', 'mixed',
+            'string', 'bool',
         ];
 
         $props = implode("\n  ", array_map(fn($t) => "p_{$t}: {$t}", $allTypes));
@@ -804,8 +866,8 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertCount(count($allTypes), $struct->getProperties());
 
         foreach ($struct->getProperties() as $i => $prop) {
-            $this->assertSame(Type::KIND_SIMPLE, $prop->getType()->getKind(),
-                sprintf('Type "%s" should be KIND_SIMPLE', $allTypes[$i]));
+            $this->assertSame(TypeKind::Simple, $prop->getType()->getKind(),
+                sprintf('Type "%s" should be KIND_ALIAS', $allTypes[$i]));
             $this->assertSame($allTypes[$i], $prop->getType()->getName());
         }
     }
@@ -853,7 +915,7 @@ class SchemaEvaluatorTest extends TestCase
     {
         $def = $this->evaluateCodeStrict("[type] = {\n  mytype\n}\nFoo {\n  x: mytype\n}");
         $this->assertSame('mytype', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
-        $this->assertSame(Type::KIND_SIMPLE, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
     }
 
     public function testModelMetadataReferenceWorks(): void
@@ -949,7 +1011,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertSame('age', $props[1]->getName());
 
         $fooProps = $def->getStruct('Foo')->getProperties();
-        $this->assertSame(Type::KIND_REFERENCE, $fooProps[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $fooProps[0]->getType()->getKind());
         $this->assertSame('MyData', $fooProps[0]->getType()->getName());
     }
 
@@ -967,8 +1029,8 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertTrue($def->getStruct('ItemList')->isInline());
 
         $fooProps = $def->getStruct('Foo')->getProperties();
-        $this->assertSame(Type::KIND_ARRAY, $fooProps[0]->getType()->getKind());
-        $this->assertSame(Type::KIND_REFERENCE, $fooProps[0]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Array, $fooProps[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $fooProps[0]->getType()->getInnerType()->getKind());
         $this->assertSame('ItemList', $fooProps[0]->getType()->getInnerType()->getName());
     }
 
@@ -979,8 +1041,8 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertTrue($def->getStruct('Payload')->isInline());
 
         $fooProps = $def->getStruct('Foo')->getProperties();
-        $this->assertSame(Type::KIND_NULLABLE, $fooProps[0]->getType()->getKind());
-        $this->assertSame(Type::KIND_REFERENCE, $fooProps[0]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Nullable, $fooProps[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $fooProps[0]->getType()->getInnerType()->getKind());
         $this->assertSame('Payload', $fooProps[0]->getType()->getInnerType()->getName());
     }
 
@@ -989,8 +1051,8 @@ class SchemaEvaluatorTest extends TestCase
         $def = $this->evaluateCode("Foo {\n  items: ItemList {\n    id: int\n  }[]?\n}");
 
         $fooProps = $def->getStruct('Foo')->getProperties();
-        $this->assertSame(Type::KIND_NULLABLE, $fooProps[0]->getType()->getKind());
-        $this->assertSame(Type::KIND_ARRAY, $fooProps[0]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Nullable, $fooProps[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Array, $fooProps[0]->getType()->getInnerType()->getKind());
         $this->assertSame('ItemList', $fooProps[0]->getType()->getInnerType()->getInnerType()->getName());
     }
 
@@ -1022,7 +1084,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertTrue($def->getStruct('Inner')->isInline());
 
         $outerProps = $def->getStruct('Outer')->getProperties();
-        $this->assertSame(Type::KIND_REFERENCE, $outerProps[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Reference, $outerProps[0]->getType()->getKind());
         $this->assertSame('Inner', $outerProps[0]->getType()->getName());
 
         $innerProps = $def->getStruct('Inner')->getProperties();
@@ -1119,10 +1181,10 @@ class SchemaEvaluatorTest extends TestCase
         $props = $struct->getProperties();
 
         $this->assertSame('data', $props[0]->getName());
-        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[0]->getType()->getKind());
         $inner = $props[0]->getType()->getInnerType();
         $this->assertTrue($inner->isNullable());
-        $this->assertSame(Type::KIND_SIMPLE, $inner->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Simple, $inner->getInnerType()->getKind());
         $this->assertSame('int', $inner->getInnerType()->getName());
     }
 
@@ -1135,7 +1197,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertSame('data', $props[0]->getName());
         $this->assertTrue($props[0]->getType()->isNullable());
         $inner = $props[0]->getType()->getInnerType();
-        $this->assertSame(Type::KIND_UNION, $inner->getKind());
+        $this->assertSame(TypeKind::Union, $inner->getKind());
         $unionTypes = $inner->getUnionTypes();
         $this->assertCount(2, $unionTypes);
         $this->assertSame('string', $unionTypes[0]->getName());
@@ -1149,9 +1211,9 @@ class SchemaEvaluatorTest extends TestCase
         $props = $struct->getProperties();
 
         $this->assertSame('tags', $props[0]->getName());
-        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[0]->getType()->getKind());
         $inner = $props[0]->getType()->getInnerType();
-        $this->assertSame(Type::KIND_UNION, $inner->getKind());
+        $this->assertSame(TypeKind::Union, $inner->getKind());
         $unionTypes = $inner->getUnionTypes();
         $this->assertCount(2, $unionTypes);
         $this->assertSame('string', $unionTypes[0]->getName());
@@ -1167,7 +1229,7 @@ class SchemaEvaluatorTest extends TestCase
         $this->assertSame('data', $props[0]->getName());
         $this->assertTrue($props[0]->getType()->isNullable());
         $arrayType = $props[0]->getType()->getInnerType();
-        $this->assertSame(Type::KIND_ARRAY, $arrayType->getKind());
+        $this->assertSame(TypeKind::Array, $arrayType->getKind());
         $elementType = $arrayType->getInnerType();
         $this->assertTrue($elementType->isNullable());
         $this->assertSame('int', $elementType->getInnerType()->getName());
@@ -1180,9 +1242,9 @@ class SchemaEvaluatorTest extends TestCase
         $props = $struct->getProperties();
 
         $this->assertSame('matrix', $props[0]->getName());
-        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[0]->getType()->getKind());
         $inner = $props[0]->getType()->getInnerType();
-        $this->assertSame(Type::KIND_ARRAY, $inner->getKind());
+        $this->assertSame(TypeKind::Array, $inner->getKind());
         $this->assertSame('int', $inner->getInnerType()->getName());
     }
 
@@ -1192,10 +1254,10 @@ class SchemaEvaluatorTest extends TestCase
         $struct = $def->getStruct('Foo');
         $props = $struct->getProperties();
 
-        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Simple, $props[0]->getType()->getKind());
         $this->assertSame('int', $props[0]->getType()->getName());
 
-        $this->assertSame(Type::KIND_ARRAY, $props[1]->getType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[1]->getType()->getKind());
         $this->assertSame('int', $props[1]->getType()->getInnerType()->getName());
     }
 
@@ -1205,13 +1267,99 @@ class SchemaEvaluatorTest extends TestCase
         $struct = $def->getStruct('Foo');
         $props = $struct->getProperties();
 
-        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $this->assertSame(TypeKind::Array, $props[0]->getType()->getKind());
         $this->assertTrue($props[0]->getType()->getInnerType()->isNullable());
 
-        $this->assertSame(Type::KIND_UNION, $props[1]->getType()->getKind());
+        $this->assertSame(TypeKind::Union, $props[1]->getType()->getKind());
         $this->assertFalse($props[1]->getType()->isNullable());
 
         $this->assertTrue($props[2]->getType()->isNullable());
-        $this->assertSame(Type::KIND_UNION, $props[2]->getType()->getInnerType()->getKind());
+        $this->assertSame(TypeKind::Union, $props[2]->getType()->getInnerType()->getKind());
+    }
+
+    public function testPubTypeAliasIsPublic(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  pub MessageType = 'text'|'image'|'video'\n}\nMsg { type: MessageType }");
+        $this->assertTrue($def->isTypeAliasPublic('MessageType'));
+    }
+
+    public function testNonPubTypeAliasIsNotPublic(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  MyType = 'a'|'b'\n}\nMsg { type: MyType }");
+        $this->assertFalse($def->isTypeAliasPublic('MyType'));
+    }
+
+    public function testGetPublicTypeAliases(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  pub Visible = 'a'|'b'\n  hidden = 'c'|'d'\n}\nMsg {\n  a: Visible\n  b: hidden\n}");
+        $pubAliases = $def->getPublicTypeAliases();
+        $this->assertCount(1, $pubAliases);
+        $this->assertArrayHasKey('Visible', $pubAliases);
+    }
+
+    public function testPubInlineObjectTypeAlias(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  pub position = {\n    x: int\n    y: int\n  }\n}\nBox { pos: position }");
+        $this->assertTrue($def->isTypeAliasPublic('position'));
+        $struct = $def->getStruct('position');
+        $this->assertNotNull($struct);
+        $this->assertTrue($struct->isInline());
+    }
+
+    public function testNestedNamespace(): void
+    {
+        $def = $this->evaluateCode("ns Visibility {\n  const public\n  ns State {\n    const active\n    const archived\n  }\n}");
+        $ns = $def->getNamespaces();
+        $this->assertArrayHasKey('Visibility', $ns);
+        $this->assertArrayHasKey('Visibility::State', $ns);
+        $this->assertSame('Visibility::public', $ns['Visibility']['public']);
+        $this->assertSame('Visibility::State::active', $ns['Visibility::State']['active']);
+        $this->assertSame('Visibility::State::archived', $ns['Visibility::State']['archived']);
+    }
+
+    public function testDeeplyNestedNamespace(): void
+    {
+        $def = $this->evaluateCode("ns A {\n  ns B {\n    ns C {\n      const x\n    }\n  }\n}");
+        $ns = $def->getNamespaces();
+        $this->assertArrayHasKey('A::B::C', $ns);
+        $this->assertSame('A::B::C::x', $ns['A::B::C']['x']);
+    }
+
+    public function testNestedNamespaceOnlyChildrenNoParentEntry(): void
+    {
+        $def = $this->evaluateCode("ns A {\n  ns B {\n    const x\n  }\n}");
+        $ns = $def->getNamespaces();
+        $this->assertArrayNotHasKey('A', $ns);
+        $this->assertArrayHasKey('A::B', $ns);
+    }
+
+    public function testNestedNamespaceReferenceResolution(): void
+    {
+        $def = $this->evaluateCode("ns A {\n  ns B {\n    const x = 42\n  }\n}\nns Config {\n  const ref = A::B::x\n}");
+        $this->assertSame(42, $def->getNamespaces()['Config']['ref']);
+    }
+
+    public function testNestedNamespaceInMetadata(): void
+    {
+        $def = $this->evaluateCode("ns A {\n  ns B {\n    const val\n  }\n}\nFoo {\n  [style] = A::B::val\n  x: int\n}");
+        $this->assertSame('A::B::val', $def->getStruct('Foo')->getMetadataValue('style'));
+    }
+
+    public function testNestedNamespaceResolveReference(): void
+    {
+        $def = $this->evaluateCode("ns A {\n  ns B {\n    const x = 99\n  }\n}");
+        $this->assertSame(99, $def->resolveReference('A::B', 'x'));
+    }
+
+    public function testDuplicateNestedNamespaceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->evaluateCode("ns A {\n  ns B {\n    const x\n  }\n}\nns A {\n  ns B {\n    const y\n  }\n}");
+    }
+
+    public function testScopeLevelConstantWithNestedReference(): void
+    {
+        $def = $this->evaluateCode("ns A {\n  ns B {\n    const val = 7\n  }\n}\nconst myval = A::B::val\nFoo {\n  [v] = myval\n  x: int\n}");
+        $this->assertSame(7, $def->getStruct('Foo')->getMetadataValue('v'));
     }
 }

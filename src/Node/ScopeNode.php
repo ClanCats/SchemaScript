@@ -25,6 +25,11 @@ class ScopeNode extends BaseNode
     protected array $namespaces = [];
 
     /**
+     * @var array<ConstantNode>
+     */
+    protected array $constants = [];
+
+    /**
      * @var array<ModelDefinitionNode>
      */
     protected array $models = [];
@@ -87,6 +92,19 @@ class ScopeNode extends BaseNode
     public function addNamespace(NamespaceNode $namespace): void
     {
         $this->namespaces[] = $namespace;
+    }
+
+    /**
+     * @return array<ConstantNode>
+     */
+    public function getConstants(): array
+    {
+        return $this->constants;
+    }
+
+    public function addConstant(ConstantNode $constant): void
+    {
+        $this->constants[] = $constant;
     }
 
     /**
