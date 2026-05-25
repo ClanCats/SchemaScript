@@ -1,0 +1,27 @@
+{
+    "name": "clancats/schemascript",
+    "authors": [
+        {
+            "name": "Mario Döring",
+            "email": "mario@clancats.com"
+        }
+    ],
+    "require-dev": {
+        "phpstan/phpstan": "2.1.55",
+        "phpunit/phpunit": "^9",
+        "squizlabs/php_codesniffer": "^3.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "ClanCats\\SchemaScript\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ClanCats\\SchemaScript\\": "tests/"
+        }
+    },
+    "bin": ["bin/scsc"],
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

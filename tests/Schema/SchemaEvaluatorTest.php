@@ -1,0 +1,1217 @@
+<?php
+
+namespace ClanCats\SchemaScript\Tests\Schema;
+
+use PHPUnit\Framework\TestCase;
+use ClanCats\SchemaScript\Lexer;
+use ClanCats\SchemaScript\Parser\ScopeParser;
+use ClanCats\SchemaScript\Schema\SchemaEvaluator;
+use ClanCats\SchemaScript\Schema\Definition;
+use ClanCats\SchemaScript\Schema\Type;
+use ClanCats\SchemaScript\SchemaNamespace;
+use ClanCats\SchemaScript\Exception\EvaluatorException;
+
+class SchemaEvaluatorTest extends TestCase
+{
+    private function createNamespaceWithStdlib(): SchemaNamespace
+    {
+        $ns = new SchemaNamespace();
+        $ns->importStdlib();
+        return $ns;
+    }
+
+    private function evaluateCode(string $code): Definition
+    {
+        $ns = $this->createNamespaceWithStdlib();
+        $code = "import scsc/base\n" . $code;
+        $tokens = (new Lexer($code))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+        return (new SchemaEvaluator($ns))->evaluate($scope);
+    }
+
+    private function evaluateCodeStrict(string $code): Definition
+    {
+        $tokens = (new Lexer($code))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+        return (new SchemaEvaluator())->evaluate($scope);
+    }
+
+    private function evaluateConceptFile(): Definition
+    {
+        $ns = $this->createNamespaceWithStdlib();
+        $code = file_get_contents(__DIR__ . '/../../concept.scsc');
+        $tokens = (new Lexer($code))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+        return (new SchemaEvaluator($ns))->evaluate($scope);
+    }
+
+    public function testGlobalMetadata(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $metadata = $def->getMetadata();
+
+        $this->assertCount(1, $metadata);
+        $this->assertSame('version', $metadata[0]['key']);
+        $this->assertSame(1, $metadata[0]['value']);
+        $this->assertSame([], $metadata[0]['attributes']);
+    }
+
+    public function testTypeAliases(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $aliases = $def->getTypeAliases();
+
+        $this->assertArrayHasKey('int64', $aliases);
+        $this->assertArrayHasKey('int32', $aliases);
+
+        $int64 = $aliases['int64']['annotations'];
+        $this->assertSame(['int'], $int64['lang.php']);
+        $this->assertSame(['bigint'], $int64['lang.ts']);
+
+        $int32 = $aliases['int32']['annotations'];
+        $this->assertSame(['int'], $int32['lang.php']);
+        $this->assertSame(['number'], $int32['lang.ts']);
+    }
+
+    public function testNamespaces(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $namespaces = $def->getNamespaces();
+
+        $this->assertArrayHasKey('MappingType', $namespaces);
+        $this->assertSame([
+            'camelCase' => 'MappingType::camelCase',
+            'snake_case' => 'MappingType::snake_case',
+        ], $namespaces['MappingType']);
+    }
+
+    public function testResolveReference(): void
+    {
+        $def = $this->evaluateConceptFile();
+
+        $this->assertSame('MappingType::camelCase', $def->resolveReference('MappingType', 'camelCase'));
+        $this->assertNull($def->resolveReference('MappingType', 'nonexistent'));
+        $this->assertNull($def->resolveReference('Nonexistent', 'camelCase'));
+    }
+
+    public function testStructCount(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $structs = $def->getStructs();
+
+        $this->assertCount(7, $structs);
+        $this->assertArrayHasKey('User', $structs);
+        $this->assertArrayHasKey('UserAvatarImage', $structs);
+        $this->assertArrayHasKey('UserLastMessages', $structs);
+        $this->assertArrayHasKey('Image', $structs);
+        $this->assertArrayHasKey('ImageProxy', $structs);
+        $this->assertArrayHasKey('Message', $structs);
+        $this->assertArrayHasKey('MessageContext', $structs);
+    }
+
+    public function testInlineStructFlag(): void
+    {
+        $def = $this->evaluateConceptFile();
+
+        $this->assertFalse($def->getStruct('User')->isInline());
+        $this->assertFalse($def->getStruct('Image')->isInline());
+        $this->assertFalse($def->getStruct('Message')->isInline());
+
+        $this->assertTrue($def->getStruct('UserAvatarImage')->isInline());
+        $this->assertTrue($def->getStruct('UserLastMessages')->isInline());
+        $this->assertTrue($def->getStruct('ImageProxy')->isInline());
+        $this->assertTrue($def->getStruct('MessageContext')->isInline());
+    }
+
+    public function testUserStruct(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $user = $def->getStruct('User');
+
+        $this->assertSame(2, $user->getMetadataValue('version'));
+        $this->assertSame('MappingType::camelCase', $user->getMetadataValue('map:local'));
+
+        $props = $user->getProperties();
+        $this->assertCount(4, $props);
+
+        // id: int
+        $this->assertSame('id', $props[0]->getName());
+        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame('int', $props[0]->getType()->getName());
+        $this->assertFalse($props[0]->isOptional());
+
+        // avatar_image_id: int?
+        $this->assertSame('avatar_image_id', $props[1]->getName());
+        $this->assertTrue($props[1]->getType()->isNullable());
+        $this->assertSame(Type::KIND_SIMPLE, $props[1]->getType()->getInnerType()->getKind());
+        $this->assertSame('int', $props[1]->getType()->getInnerType()->getName());
+        $this->assertFalse($props[1]->isOptional());
+        $this->assertTrue($props[1]->hasAnnotation('local'));
+        $this->assertSame(['avatarImageId'], $props[1]->getAnnotation('local'));
+
+        // avatar_image?: { data: Image? }
+        $this->assertSame('avatar_image', $props[2]->getName());
+        $this->assertTrue($props[2]->isOptional());
+        $this->assertSame(Type::KIND_REFERENCE, $props[2]->getType()->getKind());
+        $this->assertSame('UserAvatarImage', $props[2]->getType()->getName());
+
+        // last_messages: { cached: bool  data: Message[] }
+        $this->assertSame('last_messages', $props[3]->getName());
+        $this->assertFalse($props[3]->isOptional());
+        $this->assertSame(Type::KIND_REFERENCE, $props[3]->getType()->getKind());
+        $this->assertSame('UserLastMessages', $props[3]->getType()->getName());
+    }
+
+    public function testUserAvatarImageStruct(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $struct = $def->getStruct('UserAvatarImage');
+
+        $props = $struct->getProperties();
+        $this->assertCount(1, $props);
+
+        // data: Image?
+        $this->assertSame('data', $props[0]->getName());
+        $this->assertTrue($props[0]->getType()->isNullable());
+        $this->assertSame(Type::KIND_REFERENCE, $props[0]->getType()->getInnerType()->getKind());
+        $this->assertSame('Image', $props[0]->getType()->getInnerType()->getName());
+    }
+
+    public function testUserLastMessagesStruct(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $struct = $def->getStruct('UserLastMessages');
+
+        $props = $struct->getProperties();
+        $this->assertCount(2, $props);
+
+        // cached: bool
+        $this->assertSame('cached', $props[0]->getName());
+        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame('bool', $props[0]->getType()->getName());
+
+        // data: Message[]
+        $this->assertSame('data', $props[1]->getName());
+        $this->assertSame(Type::KIND_ARRAY, $props[1]->getType()->getKind());
+        $this->assertSame(Type::KIND_REFERENCE, $props[1]->getType()->getInnerType()->getKind());
+        $this->assertSame('Message', $props[1]->getType()->getInnerType()->getName());
+    }
+
+    public function testImageStruct(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $image = $def->getStruct('Image');
+
+        $props = $image->getProperties();
+        $this->assertCount(2, $props);
+
+        // colors: int[]
+        $this->assertSame('colors', $props[0]->getName());
+        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getInnerType()->getKind());
+        $this->assertSame('int', $props[0]->getType()->getInnerType()->getName());
+
+        // proxy: { s1x1: string }
+        $this->assertSame('proxy', $props[1]->getName());
+        $this->assertSame(Type::KIND_REFERENCE, $props[1]->getType()->getKind());
+        $this->assertSame('ImageProxy', $props[1]->getType()->getName());
+    }
+
+    public function testMessageContextStruct(): void
+    {
+        $def = $this->evaluateConceptFile();
+        $ctx = $def->getStruct('MessageContext');
+
+        $props = $ctx->getProperties();
+        $this->assertCount(2, $props);
+
+        // type: string with @enum annotation
+        $this->assertSame('type', $props[0]->getName());
+        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame('string', $props[0]->getType()->getName());
+        $this->assertTrue($props[0]->hasAnnotation('enum'));
+        $this->assertSame(['text', 'image'], $props[0]->getAnnotation('enum'));
+
+        // data: Image|User
+        $this->assertSame('data', $props[1]->getName());
+        $this->assertSame(Type::KIND_UNION, $props[1]->getType()->getKind());
+        $unionTypes = $props[1]->getType()->getUnionTypes();
+        $this->assertCount(2, $unionTypes);
+        $this->assertSame(Type::KIND_REFERENCE, $unionTypes[0]->getKind());
+        $this->assertSame('Image', $unionTypes[0]->getName());
+        $this->assertSame(Type::KIND_REFERENCE, $unionTypes[1]->getKind());
+        $this->assertSame('User', $unionTypes[1]->getName());
+    }
+
+    public function testSimpleModel(): void
+    {
+        $def = $this->evaluateCode("Simple {\n  name: string\n  age: int\n}");
+        $struct = $def->getStruct('Simple');
+
+        $this->assertNotNull($struct);
+        $this->assertFalse($struct->isInline());
+        $this->assertCount(2, $struct->getProperties());
+
+        $this->assertSame('name', $struct->getProperties()[0]->getName());
+        $this->assertSame(Type::KIND_SIMPLE, $struct->getProperties()[0]->getType()->getKind());
+        $this->assertSame('string', $struct->getProperties()[0]->getType()->getName());
+    }
+
+    public function testGetStructReturnsNullForUnknown(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  x: int\n}");
+        $this->assertNull($def->getStruct('Bar'));
+    }
+
+    public function testEvaluatorIsReusable(): void
+    {
+        $ns = $this->createNamespaceWithStdlib();
+        $evaluator = new SchemaEvaluator($ns);
+
+        $def1 = $evaluator->evaluate(
+            (new ScopeParser((new Lexer("import scsc/base\nA {\n  x: int\n}"))->tokens()))->parse()
+        );
+        $def2 = $evaluator->evaluate(
+            (new ScopeParser((new Lexer("import scsc/base\nB {\n  y: string\n}"))->tokens()))->parse()
+        );
+
+        $this->assertArrayHasKey('A', $def1->getStructs());
+        $this->assertArrayNotHasKey('B', $def1->getStructs());
+        $this->assertArrayHasKey('B', $def2->getStructs());
+        $this->assertArrayNotHasKey('A', $def2->getStructs());
+    }
+
+    public function testDuplicateModelThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate model definition: "Foo"');
+        $this->evaluateCode("Foo {\n  x: int\n}\nFoo {\n  y: string\n}");
+    }
+
+    public function testTypeAliasModelNameCollisionThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Type alias name collides with model name');
+        $this->evaluateCode("[type] = {\n  Foo\n}\nFoo {\n  x: int\n}");
+    }
+
+    public function testDuplicateMetadataKeysAllowed(): void
+    {
+        $def = $this->evaluateCode("[version] = 1\n[version] = 2\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $this->assertCount(2, $metadata);
+        $this->assertSame('version', $metadata[0]['key']);
+        $this->assertSame(1, $metadata[0]['value']);
+        $this->assertSame('version', $metadata[1]['key']);
+        $this->assertSame(2, $metadata[1]['value']);
+    }
+
+    public function testDuplicateAnnotationThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate annotation "@local"');
+        $this->evaluateCode("Foo {\n  @local(x)\n  @local(y)\n  name: string\n}");
+    }
+
+    public function testUnknownNamespaceReferenceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown namespace "Nope"');
+        $this->evaluateCode("Foo {\n  [map] = Nope::value\n  x: int\n}");
+    }
+
+    public function testUnknownConstantReferenceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown constant "nope" in namespace "Ns"');
+        $this->evaluateCode("ns Ns {\n  const a\n}\nFoo {\n  [map] = Ns::nope\n  x: int\n}");
+    }
+
+    public function testDuplicatePropertyThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate property "x" in "Foo"');
+        $this->evaluateCode("Foo {\n  x: int\n  x: string\n}");
+    }
+
+    public function testDuplicateNamespaceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate namespace definition: "Ns"');
+        $this->evaluateCode("ns Ns {\n  const a\n}\nns Ns {\n  const b\n}");
+    }
+
+    public function testDuplicateConstantInNamespaceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate constant "a" in namespace "Ns"');
+        $this->evaluateCode("ns Ns {\n  const a\n  const a\n}");
+    }
+
+    public function testDuplicateTypeAliasThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate type alias definition: "mytype"');
+        $this->evaluateCode("[type] = {\n  mytype\n  mytype\n}");
+    }
+
+    // -------------------------------------------------------
+    // ~ Metadata Structure Tests
+    // -------------------------------------------------------
+
+    public function testMetadataObjectBlock(): void
+    {
+        $def = $this->evaluateCode("[config] = {\n  foo = 'bar'\n  num = 42\n}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $this->assertCount(1, $metadata);
+        $this->assertSame('config', $metadata[0]['key']);
+        $this->assertIsArray($metadata[0]['value']);
+        $entries = $metadata[0]['value'];
+        $this->assertCount(2, $entries);
+        $this->assertSame('foo', $entries[0]['key']);
+        $this->assertSame('bar', $entries[0]['value']);
+        $this->assertSame('num', $entries[1]['key']);
+        $this->assertSame(42, $entries[1]['value']);
+    }
+
+    public function testMetadataList(): void
+    {
+        $def = $this->evaluateCode("[colors] = {'red', 'green', 'blue'}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $this->assertSame('colors', $metadata[0]['key']);
+        $this->assertSame(['red', 'green', 'blue'], $metadata[0]['value']);
+    }
+
+    public function testMetadataBoolean(): void
+    {
+        $def = $this->evaluateCode("[enabled] = true\n[disabled] = false\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $this->assertTrue($metadata[0]['value']);
+        $this->assertFalse($metadata[1]['value']);
+    }
+
+    public function testMetadataNestedBlock(): void
+    {
+        $def = $this->evaluateCode("[outer] = {\n  inner = {\n    value = 'deep'\n  }\n}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $outer = $metadata[0]['value'];
+        $this->assertCount(1, $outer);
+        $inner = $outer[0]['value'];
+        $this->assertCount(1, $inner);
+        $this->assertSame('value', $inner[0]['key']);
+        $this->assertSame('deep', $inner[0]['value']);
+    }
+
+    public function testMetadataWithAnnotatedEntry(): void
+    {
+        $def = $this->evaluateCode("[meta] = {\n  @a('example')\n  value = 'fooo'\n}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $entries = $metadata[0]['value'];
+        $this->assertCount(1, $entries);
+        $this->assertSame('value', $entries[0]['key']);
+        $this->assertSame('fooo', $entries[0]['value']);
+        $this->assertArrayHasKey('a', $entries[0]['attributes']);
+        $this->assertSame(['example'], $entries[0]['attributes']['a']);
+    }
+
+    public function testMetadataStandaloneIdentifier(): void
+    {
+        $def = $this->evaluateCode("[meta] = {\n  @a('x')\n  someId\n}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $entries = $metadata[0]['value'];
+        $this->assertCount(1, $entries);
+        $this->assertSame('someId', $entries[0]['key']);
+        $this->assertNull($entries[0]['value']);
+        $this->assertArrayHasKey('a', $entries[0]['attributes']);
+    }
+
+    public function testMetadataWithMetadataKeyEntries(): void
+    {
+        $def = $this->evaluateCode("[block] = {\n  [keyA] = 'val1'\n  [keyB] = 'val2'\n}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $entries = $metadata[0]['value'];
+        $this->assertCount(2, $entries);
+        $this->assertSame('keyA', $entries[0]['key']);
+        $this->assertSame('val1', $entries[0]['value']);
+        $this->assertSame('keyB', $entries[1]['key']);
+        $this->assertSame('val2', $entries[1]['value']);
+    }
+
+    public function testModelMetadataBlock(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  [alias] = {\n    frontend = 'Account'\n    backend = 'User'\n  }\n  x: int\n}");
+        $metadata = $def->getStruct('Foo')->getMetadata();
+        $this->assertCount(1, $metadata);
+        $entries = $metadata[0]['value'];
+        $this->assertCount(2, $entries);
+        $this->assertSame('frontend', $entries[0]['key']);
+        $this->assertSame('Account', $entries[0]['value']);
+    }
+
+    public function testMetadataEntryStructure(): void
+    {
+        $def = $this->evaluateCode("[key] = 'val'\nFoo {\n  x: int\n}");
+        $entry = $def->getMetadata()[0];
+        $this->assertArrayHasKey('key', $entry);
+        $this->assertArrayHasKey('value', $entry);
+        $this->assertArrayHasKey('attributes', $entry);
+        $this->assertSame('key', $entry['key']);
+        $this->assertSame('val', $entry['value']);
+        $this->assertSame([], $entry['attributes']);
+    }
+
+    public function testMetadataListWithNumbers(): void
+    {
+        $def = $this->evaluateCode("[nums] = {1, 2, 3}\nFoo {\n  x: int\n}");
+        $this->assertSame([1, 2, 3], $def->getMetadata()[0]['value']);
+    }
+
+    public function testMetadataListWithMixedTypes(): void
+    {
+        $def = $this->evaluateCode("[mix] = {'text', 42, 3.14}\nFoo {\n  x: int\n}");
+        $this->assertSame(['text', 42, 3.14], $def->getMetadata()[0]['value']);
+    }
+
+    public function testMetadataBlockAllTypes(): void
+    {
+        $def = $this->evaluateCode("[all] = {\n  str = 'hello'\n  num = 42\n  flt = 3.14\n  yes = true\n  no = false\n  arr = {'a', 'b'}\n  obj = {\n    nested = 'val'\n  }\n}\nFoo {\n  x: int\n}");
+        $metadata = $def->getMetadata();
+        $entries = $metadata[0]['value'];
+        $this->assertCount(7, $entries);
+
+        $this->assertSame('str', $entries[0]['key']);
+        $this->assertSame('hello', $entries[0]['value']);
+
+        $this->assertSame('num', $entries[1]['key']);
+        $this->assertSame(42, $entries[1]['value']);
+
+        $this->assertSame('flt', $entries[2]['key']);
+        $this->assertSame(3.14, $entries[2]['value']);
+
+        $this->assertSame('yes', $entries[3]['key']);
+        $this->assertTrue($entries[3]['value']);
+
+        $this->assertSame('no', $entries[4]['key']);
+        $this->assertFalse($entries[4]['value']);
+
+        $this->assertSame('arr', $entries[5]['key']);
+        $this->assertSame(['a', 'b'], $entries[5]['value']);
+
+        $this->assertSame('obj', $entries[6]['key']);
+        $this->assertIsArray($entries[6]['value']);
+        $this->assertCount(1, $entries[6]['value']);
+        $this->assertSame('nested', $entries[6]['value'][0]['key']);
+        $this->assertSame('val', $entries[6]['value'][0]['value']);
+    }
+
+    public function testMetadataThreeLevelNesting(): void
+    {
+        $def = $this->evaluateCode("[root] = {\n  l1 = {\n    l2 = {\n      l3 = 'deep'\n    }\n  }\n}\nFoo {\n  x: int\n}");
+        $root = $def->getMetadata()[0]['value'];
+        $l1 = $root[0]['value'];
+        $l2 = $l1[0]['value'];
+        $this->assertSame('l3', $l2[0]['key']);
+        $this->assertSame('deep', $l2[0]['value']);
+    }
+
+    public function testMetadataAnnotatedEntryAttributes(): void
+    {
+        $def = $this->evaluateCode("[meta] = {\n  @first\n  @second('a', 'b')\n  entry = 'val'\n}\nFoo {\n  x: int\n}");
+        $entry = $def->getMetadata()[0]['value'][0];
+        $this->assertSame('entry', $entry['key']);
+        $this->assertSame('val', $entry['value']);
+        $this->assertArrayHasKey('first', $entry['attributes']);
+        $this->assertSame([], $entry['attributes']['first']);
+        $this->assertArrayHasKey('second', $entry['attributes']);
+        $this->assertSame(['a', 'b'], $entry['attributes']['second']);
+    }
+
+    public function testMetadataStandaloneIdentifierEvaluated(): void
+    {
+        $def = $this->evaluateCode("[flags] = {\n  @tag('x')\n  myFlag\n  @other\n  myOther\n  bare\n}\nFoo {\n  x: int\n}");
+        $entries = $def->getMetadata()[0]['value'];
+        $this->assertCount(3, $entries);
+
+        $this->assertSame('myFlag', $entries[0]['key']);
+        $this->assertNull($entries[0]['value']);
+        $this->assertArrayHasKey('tag', $entries[0]['attributes']);
+        $this->assertSame(['x'], $entries[0]['attributes']['tag']);
+
+        $this->assertSame('myOther', $entries[1]['key']);
+        $this->assertNull($entries[1]['value']);
+        $this->assertArrayHasKey('other', $entries[1]['attributes']);
+        $this->assertSame([], $entries[1]['attributes']['other']);
+
+        $this->assertSame('bare', $entries[2]['key']);
+        $this->assertNull($entries[2]['value']);
+        $this->assertSame([], $entries[2]['attributes']);
+    }
+
+    public function testMetadataDuplicateBlockKeys(): void
+    {
+        $def = $this->evaluateCode("[gen] = {\n  [php.mappers] = {\n    version = 1\n  }\n  [php.mappers] = {\n    version = 2\n  }\n}\nFoo {\n  x: int\n}");
+        $entries = $def->getMetadata()[0]['value'];
+        $this->assertCount(2, $entries);
+        $this->assertSame('php.mappers', $entries[0]['key']);
+        $this->assertSame('php.mappers', $entries[1]['key']);
+        $this->assertSame(1, $entries[0]['value'][0]['value']);
+        $this->assertSame(2, $entries[1]['value'][0]['value']);
+    }
+
+    public function testMetadataMixedEntryStyles(): void
+    {
+        $def = $this->evaluateCode("[mix] = {\n  [bracket] = 'a'\n  plain = 'b'\n  @tag\n  standaloneId\n}\nFoo {\n  x: int\n}");
+        $entries = $def->getMetadata()[0]['value'];
+        $this->assertCount(3, $entries);
+        $this->assertSame('bracket', $entries[0]['key']);
+        $this->assertSame('a', $entries[0]['value']);
+        $this->assertSame('plain', $entries[1]['key']);
+        $this->assertSame('b', $entries[1]['value']);
+        $this->assertSame('standaloneId', $entries[2]['key']);
+        $this->assertNull($entries[2]['value']);
+        $this->assertArrayHasKey('tag', $entries[2]['attributes']);
+    }
+
+    public function testMetadataEmptyBlockEvaluated(): void
+    {
+        $def = $this->evaluateCode("[empty] = {}\nFoo {\n  x: int\n}");
+        $this->assertSame([], $def->getMetadata()[0]['value']);
+    }
+
+    public function testMetadataReferenceInBlock(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const mode = 'debug'\n}\n[settings] = {\n  mode = Config::mode\n}\nFoo {\n  x: int\n}");
+        $entries = $def->getMetadata()[0]['value'];
+        $this->assertSame('mode', $entries[0]['key']);
+        $this->assertSame('debug', $entries[0]['value']);
+    }
+
+    public function testMetadataReferenceValuelessInBlock(): void
+    {
+        $def = $this->evaluateCode("ns Flags {\n  const enabled\n}\n[settings] = {\n  flag = Flags::enabled\n}\nFoo {\n  x: int\n}");
+        $entries = $def->getMetadata()[0]['value'];
+        $this->assertSame('flag', $entries[0]['key']);
+        $this->assertSame('Flags::enabled', $entries[0]['value']);
+    }
+
+    public function testGetMetadataValueSearchesEntries(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  [version] = 42\n  [name] = 'test'\n  x: int\n}");
+        $struct = $def->getStruct('Foo');
+        $this->assertSame(42, $struct->getMetadataValue('version'));
+        $this->assertSame('test', $struct->getMetadataValue('name'));
+        $this->assertNull($struct->getMetadataValue('nonexistent'));
+    }
+
+    public function testGetMetadataValueReturnsFirstMatch(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  [ver] = 1\n  [ver] = 2\n  x: int\n}");
+        $struct = $def->getStruct('Foo');
+        $this->assertSame(1, $struct->getMetadataValue('ver'));
+    }
+
+    public function testMetadataNestedBlockWithListsEvaluated(): void
+    {
+        $def = $this->evaluateCode("[config] = {\n  tags = {'a', 'b'}\n  nested = {\n    nums = {1, 2}\n  }\n}\nFoo {\n  x: int\n}");
+        $entries = $def->getMetadata()[0]['value'];
+        $this->assertCount(2, $entries);
+
+        $this->assertSame('tags', $entries[0]['key']);
+        $this->assertSame(['a', 'b'], $entries[0]['value']);
+
+        $this->assertSame('nested', $entries[1]['key']);
+        $innerEntries = $entries[1]['value'];
+        $this->assertCount(1, $innerEntries);
+        $this->assertSame('nums', $innerEntries[0]['key']);
+        $this->assertSame([1, 2], $innerEntries[0]['value']);
+    }
+
+    public function testModelMetadataWithReferenceEvaluated(): void
+    {
+        $def = $this->evaluateCode("ns Mapping {\n  const camel\n}\nFoo {\n  [style] = Mapping::camel\n  [config] = {\n    ref = Mapping::camel\n  }\n  x: int\n}");
+        $struct = $def->getStruct('Foo');
+        $this->assertSame('Mapping::camel', $struct->getMetadataValue('style'));
+        $configEntries = $struct->getMetadata()[1]['value'];
+        $this->assertSame('Mapping::camel', $configEntries[0]['value']);
+    }
+
+    public function testInlineObjectMetadataEvaluated(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  config: AppConfig {\n    [version] = 1\n    [debug] = true\n    name: string\n  }\n}");
+        $struct = $def->getStruct('AppConfig');
+        $this->assertNotNull($struct);
+        $metadata = $struct->getMetadata();
+        $this->assertCount(2, $metadata);
+        $this->assertSame('version', $metadata[0]['key']);
+        $this->assertSame(1, $metadata[0]['value']);
+        $this->assertSame('debug', $metadata[1]['key']);
+        $this->assertTrue($metadata[1]['value']);
+    }
+
+    public function testIntegrationSchemaMetadata(): void
+    {
+        $ns = $this->createNamespaceWithStdlib();
+        $code = file_get_contents(__DIR__ . '/../../integration/SCHEMA.scsc');
+        $tokens = (new \ClanCats\SchemaScript\Lexer($code))->tokens();
+        $scope = (new \ClanCats\SchemaScript\Parser\ScopeParser($tokens))->parse();
+        $def = (new SchemaEvaluator($ns))->evaluate($scope);
+
+        $metadata = $def->getMetadata();
+        $this->assertCount(2, $metadata);
+
+        $this->assertSame('version', $metadata[0]['key']);
+        $this->assertSame(1, $metadata[0]['value']);
+
+        $this->assertSame('generate', $metadata[1]['key']);
+        $generate = $metadata[1]['value'];
+        $this->assertCount(1, $generate);
+
+        $this->assertSame('php.mappers', $generate[0]['key']);
+        $v1 = $generate[0]['value'];
+        $this->assertSame('output', $v1[0]['key']);
+        $this->assertSame('src/Mappers/', $v1[0]['value']);
+        $this->assertSame('namespace', $v1[1]['key']);
+        $this->assertSame('IntegrationEx\\Mappers\\', $v1[1]['value']);
+    }
+
+    // -------------------------------------------------------
+    // ~ Type Validation Tests
+    // -------------------------------------------------------
+
+    public function testUnknownTypeThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "strng"');
+        $this->evaluateCode("Foo {\n  name: strng\n}");
+    }
+
+    public function testUnknownTypeWithoutNamespaceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "int"');
+        $this->evaluateCodeStrict("Foo {\n  id: int\n}");
+    }
+
+    public function testUnknownTypeInArrayThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "strng"');
+        $this->evaluateCode("Foo {\n  names: strng[]\n}");
+    }
+
+    public function testUnknownTypeInNullableThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "strng"');
+        $this->evaluateCode("Foo {\n  name: strng?\n}");
+    }
+
+    public function testUnknownTypeInUnionThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "strng"');
+        $this->evaluateCode("Foo {\n  value: int|strng\n}");
+    }
+
+    public function testUnknownTypeInNullableArrayThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "strng"');
+        $this->evaluateCode("Foo {\n  names: strng[]?\n}");
+    }
+
+    public function testUnknownTypeInInlineObjectThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "strng"');
+        $this->evaluateCode("Foo {\n  data: {\n    name: strng\n  }\n}");
+    }
+
+    public function testLocalTypeAliasIsValid(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  custom_id\n}\nFoo {\n  id: custom_id\n}");
+        $this->assertSame(Type::KIND_SIMPLE, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame('custom_id', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
+    }
+
+    public function testAnnotatedTypeAliasIsAlias(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  @lang.php('int')\n  myint\n}\nFoo {\n  id: myint\n}");
+        $this->assertSame(Type::KIND_ALIAS, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame('myint', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
+    }
+
+    public function testStdlibBuiltinTypesAreSimple(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  a: int\n  b: string\n  c: bool\n  d: float\n  e: uuid\n  f: timestamp\n}");
+        $props = $def->getStruct('Foo')->getProperties();
+        foreach ($props as $prop) {
+            $this->assertSame(Type::KIND_SIMPLE, $prop->getType()->getKind(),
+                sprintf('Expected "%s" to be KIND_SIMPLE', $prop->getName()));
+        }
+    }
+
+    public function testStdlibTypesInCompositeExpressions(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  a: int[]\n  b: string?\n  c: int|string\n  d: float[]?\n}");
+        $props = $def->getStruct('Foo')->getProperties();
+
+        $this->assertTrue($props[0]->getType()->isArray());
+        $this->assertSame('int', $props[0]->getType()->getInnerType()->getName());
+
+        $this->assertTrue($props[1]->getType()->isNullable());
+        $this->assertSame('string', $props[1]->getType()->getInnerType()->getName());
+
+        $this->assertTrue($props[2]->getType()->isUnion());
+        $this->assertSame('int', $props[2]->getType()->getUnionTypes()[0]->getName());
+        $this->assertSame('string', $props[2]->getType()->getUnionTypes()[1]->getName());
+
+        $this->assertTrue($props[3]->getType()->isNullable());
+        $this->assertTrue($props[3]->getType()->getInnerType()->isArray());
+        $this->assertSame('float', $props[3]->getType()->getInnerType()->getInnerType()->getName());
+    }
+
+    public function testModelReferenceStillWorksWithValidation(): void
+    {
+        $def = $this->evaluateCode("Bar {\n  x: int\n}\nFoo {\n  bar: Bar\n}");
+        $this->assertSame(Type::KIND_REFERENCE, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $this->assertSame('Bar', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
+    }
+
+    public function testLocalTypeOverridesImportedType(): void
+    {
+        $def = $this->evaluateCode("[type] = {\n  @lang.php('int')\n  @lang.ts('bigint')\n  int64\n}\nFoo {\n  id: int64\n}");
+        $this->assertSame(Type::KIND_ALIAS, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+        $aliases = $def->getTypeAliases();
+        $this->assertArrayHasKey('int64', $aliases);
+        $this->assertSame(['int'], $aliases['int64']['annotations']['lang.php']);
+    }
+
+    public function testAllStdlibTypesResolvable(): void
+    {
+        $allTypes = [
+            'int', 'int8', 'int16', 'int32', 'int64',
+            'uint', 'uint8', 'uint16', 'uint32', 'uint64',
+            'float', 'float32', 'float64', 'double',
+            'string', 'bool', 'bytes',
+            'timestamp', 'datetime', 'date', 'time',
+            'uuid', 'any', 'mixed',
+        ];
+
+        $props = implode("\n  ", array_map(fn($t) => "p_{$t}: {$t}", $allTypes));
+        $def = $this->evaluateCode("Foo {\n  {$props}\n}");
+        $struct = $def->getStruct('Foo');
+        $this->assertCount(count($allTypes), $struct->getProperties());
+
+        foreach ($struct->getProperties() as $i => $prop) {
+            $this->assertSame(Type::KIND_SIMPLE, $prop->getType()->getKind(),
+                sprintf('Type "%s" should be KIND_SIMPLE', $allTypes[$i]));
+            $this->assertSame($allTypes[$i], $prop->getType()->getName());
+        }
+    }
+
+    public function testErrorMessageSuggestsImportOrTypes(): void
+    {
+        try {
+            $this->evaluateCode("Foo {\n  name: unknown_type\n}");
+            $this->fail('Expected EvaluatorException');
+        } catch (EvaluatorException $e) {
+            $this->assertStringContainsString('Unknown type "unknown_type"', $e->getMessage());
+            $this->assertStringContainsString('import', $e->getMessage());
+            $this->assertStringContainsString('[type]', $e->getMessage());
+        }
+    }
+
+    public function testUnknownTypeSecondPropertyThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "nope"');
+        $this->evaluateCode("Foo {\n  name: string\n  age: nope\n}");
+    }
+
+    public function testUnknownTypeInUnionSecondBranchThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Unknown type "nope"');
+        $this->evaluateCode("Bar {\n  x: int\n}\nFoo {\n  data: Bar|nope\n}");
+    }
+
+    public function testStrictModeRejectsAllBarePrimitives(): void
+    {
+        $primitives = ['int', 'string', 'bool', 'float'];
+        foreach ($primitives as $type) {
+            try {
+                $this->evaluateCodeStrict("Foo {\n  x: {$type}\n}");
+                $this->fail("Expected EvaluatorException for type \"{$type}\"");
+            } catch (EvaluatorException $e) {
+                $this->assertStringContainsString("Unknown type \"{$type}\"", $e->getMessage());
+            }
+        }
+    }
+
+    public function testLocalTypesBlockMakesTypeValid(): void
+    {
+        $def = $this->evaluateCodeStrict("[type] = {\n  mytype\n}\nFoo {\n  x: mytype\n}");
+        $this->assertSame('mytype', $def->getStruct('Foo')->getProperties()[0]->getType()->getName());
+        $this->assertSame(Type::KIND_SIMPLE, $def->getStruct('Foo')->getProperties()[0]->getType()->getKind());
+    }
+
+    public function testModelMetadataReferenceWorks(): void
+    {
+        $def = $this->evaluateCode("ns Mapping {\n  const camel\n}\nFoo {\n  [style] = Mapping::camel\n  x: int\n}");
+        $this->assertSame('Mapping::camel', $def->getStruct('Foo')->getMetadataValue('style'));
+    }
+
+    public function testValuelessConstantResolvesToQualifiedName(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const plain\n}");
+        $this->assertSame('Config::plain', $def->getNamespaces()['Config']['plain']);
+    }
+
+    public function testConstantWithNumericValue(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const version = 42\n}");
+        $this->assertSame(42, $def->getNamespaces()['Config']['version']);
+    }
+
+    public function testConstantWithStringValue(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const endpoint = \"/api/v2\"\n}");
+        $this->assertSame('/api/v2', $def->getNamespaces()['Config']['endpoint']);
+    }
+
+    public function testConstantWithIdentifierValue(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const enabled = true\n}");
+        $this->assertSame('true', $def->getNamespaces()['Config']['enabled']);
+    }
+
+    public function testConstantWithReferenceValue(): void
+    {
+        $def = $this->evaluateCode("ns Source {\n  const original = 99\n}\nns Config {\n  const alias = Source::original\n}");
+        $this->assertSame(99, $def->getNamespaces()['Config']['alias']);
+    }
+
+    public function testValuedConstantReferenceInMetadata(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const version = 42\n}\nFoo {\n  [ver] = Config::version\n  x: int\n}");
+        $this->assertSame(42, $def->getStruct('Foo')->getMetadataValue('ver'));
+    }
+
+    public function testResolveReferenceReturnsValueForValuedConstant(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const version = 42\n}");
+        $this->assertSame(42, $def->resolveReference('Config', 'version'));
+    }
+
+    public function testResolveReferenceReturnsQualifiedNameForValuelessConstant(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const plain\n}");
+        $this->assertSame('Config::plain', $def->resolveReference('Config', 'plain'));
+    }
+
+    public function testMixedValuedAndValuelessConstants(): void
+    {
+        $def = $this->evaluateCode("ns Config {\n  const plain\n  const version = 2\n  const name = \"hello\"\n}");
+        $ns = $def->getNamespaces()['Config'];
+        $this->assertSame('Config::plain', $ns['plain']);
+        $this->assertSame(2, $ns['version']);
+        $this->assertSame('hello', $ns['name']);
+    }
+
+    public function testConstantReferenceToValuelessConstantResolvesToQualifiedName(): void
+    {
+        $def = $this->evaluateCode("ns Source {\n  const symbol\n}\nns Config {\n  const ref = Source::symbol\n}");
+        $this->assertSame('Source::symbol', $def->getNamespaces()['Config']['ref']);
+    }
+
+    public function testTypeConvenienceMethods(): void
+    {
+        $def = $this->evaluateCode("Ref {\n  x: int\n}\nFoo {\n  a: int\n  b: Ref\n  c: int[]\n  d: int?\n  e: int|string\n}");
+        $props = $def->getStruct('Foo')->getProperties();
+
+        $this->assertTrue($props[0]->getType()->isSimple());
+        $this->assertTrue($props[1]->getType()->isReference());
+        $this->assertTrue($props[2]->getType()->isArray());
+        $this->assertTrue($props[3]->getType()->isNullable());
+        $this->assertTrue($props[4]->getType()->isUnion());
+    }
+
+    public function testExplicitInlineObjectName(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  data: MyData {\n    name: string\n    age: int\n  }\n}");
+        $this->assertNotNull($def->getStruct('MyData'));
+        $this->assertTrue($def->getStruct('MyData')->isInline());
+
+        $props = $def->getStruct('MyData')->getProperties();
+        $this->assertCount(2, $props);
+        $this->assertSame('name', $props[0]->getName());
+        $this->assertSame('age', $props[1]->getName());
+
+        $fooProps = $def->getStruct('Foo')->getProperties();
+        $this->assertSame(Type::KIND_REFERENCE, $fooProps[0]->getType()->getKind());
+        $this->assertSame('MyData', $fooProps[0]->getType()->getName());
+    }
+
+    public function testExplicitInlineNameCollisionWithModelThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Inline object struct name collision: "Bar" is already defined');
+        $this->evaluateCode("Bar {\n  x: int\n}\nFoo {\n  data: Bar {\n    y: string\n  }\n}");
+    }
+
+    public function testExplicitInlineNameAsArray(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  items: ItemList {\n    id: int\n  }[]\n}");
+        $this->assertNotNull($def->getStruct('ItemList'));
+        $this->assertTrue($def->getStruct('ItemList')->isInline());
+
+        $fooProps = $def->getStruct('Foo')->getProperties();
+        $this->assertSame(Type::KIND_ARRAY, $fooProps[0]->getType()->getKind());
+        $this->assertSame(Type::KIND_REFERENCE, $fooProps[0]->getType()->getInnerType()->getKind());
+        $this->assertSame('ItemList', $fooProps[0]->getType()->getInnerType()->getName());
+    }
+
+    public function testExplicitInlineNameNullable(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  payload: Payload {\n    x: int\n  }?\n}");
+        $this->assertNotNull($def->getStruct('Payload'));
+        $this->assertTrue($def->getStruct('Payload')->isInline());
+
+        $fooProps = $def->getStruct('Foo')->getProperties();
+        $this->assertSame(Type::KIND_NULLABLE, $fooProps[0]->getType()->getKind());
+        $this->assertSame(Type::KIND_REFERENCE, $fooProps[0]->getType()->getInnerType()->getKind());
+        $this->assertSame('Payload', $fooProps[0]->getType()->getInnerType()->getName());
+    }
+
+    public function testExplicitInlineNameNullableArray(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  items: ItemList {\n    id: int\n  }[]?\n}");
+
+        $fooProps = $def->getStruct('Foo')->getProperties();
+        $this->assertSame(Type::KIND_NULLABLE, $fooProps[0]->getType()->getKind());
+        $this->assertSame(Type::KIND_ARRAY, $fooProps[0]->getType()->getInnerType()->getKind());
+        $this->assertSame('ItemList', $fooProps[0]->getType()->getInnerType()->getInnerType()->getName());
+    }
+
+    public function testExplicitInlineNameWithMetadata(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  config: AppConfig {\n    [version] = 1\n    name: string\n  }\n}");
+        $struct = $def->getStruct('AppConfig');
+        $this->assertNotNull($struct);
+        $this->assertSame(1, $struct->getMetadataValue('version'));
+        $this->assertCount(1, $struct->getProperties());
+        $this->assertSame('name', $struct->getProperties()[0]->getName());
+    }
+
+    public function testExplicitInlineNameWithAnnotations(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  detail: Detail {\n    @deprecated\n    old: string\n    new_field: int\n  }\n}");
+        $struct = $def->getStruct('Detail');
+        $this->assertNotNull($struct);
+        $this->assertCount(2, $struct->getProperties());
+        $this->assertTrue($struct->getProperties()[0]->hasAnnotation('deprecated'));
+    }
+
+    public function testExplicitInlineNestedInsideExplicitInline(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  outer: Outer {\n    inner: Inner {\n      val: int\n    }\n  }\n}");
+        $this->assertNotNull($def->getStruct('Outer'));
+        $this->assertNotNull($def->getStruct('Inner'));
+        $this->assertTrue($def->getStruct('Outer')->isInline());
+        $this->assertTrue($def->getStruct('Inner')->isInline());
+
+        $outerProps = $def->getStruct('Outer')->getProperties();
+        $this->assertSame(Type::KIND_REFERENCE, $outerProps[0]->getType()->getKind());
+        $this->assertSame('Inner', $outerProps[0]->getType()->getName());
+
+        $innerProps = $def->getStruct('Inner')->getProperties();
+        $this->assertSame('val', $innerProps[0]->getName());
+    }
+
+    public function testExplicitInlineNameCollisionBetweenTwoInlinesThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Inline object struct name collision: "Dup" is already defined');
+        $this->evaluateCode("Foo {\n  a: Dup {\n    x: int\n  }\n  b: Dup {\n    y: string\n  }\n}");
+    }
+
+    public function testMultipleDistinctExplicitInlineNames(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  a: Alpha {\n    x: int\n  }\n  b: Beta {\n    y: string\n  }\n}");
+        $this->assertNotNull($def->getStruct('Alpha'));
+        $this->assertNotNull($def->getStruct('Beta'));
+        $this->assertSame('x', $def->getStruct('Alpha')->getProperties()[0]->getName());
+        $this->assertSame('y', $def->getStruct('Beta')->getProperties()[0]->getName());
+    }
+
+    public function testMixedExplicitAndAutoNamedInlines(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  named: MyNamed {\n    x: int\n  }\n  auto: {\n    y: string\n  }\n}");
+        $this->assertNotNull($def->getStruct('MyNamed'));
+        $this->assertNotNull($def->getStruct('FooAuto'));
+        $this->assertTrue($def->getStruct('MyNamed')->isInline());
+        $this->assertTrue($def->getStruct('FooAuto')->isInline());
+    }
+
+    // -------------------------------------------------------
+    // ~ Import Tests
+    // -------------------------------------------------------
+
+    private function fixtureDir(): string
+    {
+        return __DIR__ . '/../fixtures/imports';
+    }
+
+    private function evaluateWithImports(string $code): Definition
+    {
+        $ns = new SchemaNamespace();
+        $ns->importStdlib();
+        $ns->importDirectory($this->fixtureDir());
+
+        $tokens = (new Lexer($code))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+        return (new SchemaEvaluator($ns))->evaluate($scope);
+    }
+
+    public function testBasicImport(): void
+    {
+        $def = $this->evaluateWithImports("import models/post\n\nUser {\n  id: int\n}");
+        $this->assertNotNull($def->getStruct('User'));
+        $this->assertNotNull($def->getStruct('Post'));
+    }
+
+    public function testTransitiveImport(): void
+    {
+        $def = $this->evaluateWithImports("import models/user");
+        $this->assertNotNull($def->getStruct('User'));
+        $this->assertNotNull($def->getStruct('Timestamps'));
+    }
+
+    public function testCircularImportDoesNotLoop(): void
+    {
+        $def = $this->evaluateWithImports("import circular_a");
+        $this->assertNotNull($def->getStruct('ModelA'));
+        $this->assertNotNull($def->getStruct('ModelB'));
+    }
+
+    public function testImportWithoutNamespaceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('no SchemaNamespace provided');
+        $this->evaluateCodeStrict("import common\n\nFoo {\n  id: int\n}");
+    }
+
+    public function testImportUnknownPathThrows(): void
+    {
+        $this->expectException(\ClanCats\SchemaScript\Exception\SchemaNamespaceException::class);
+        $this->evaluateWithImports("import nonexistent/path");
+    }
+
+    // -------------------------------------------------------
+    // ~ Parenthesized Type Grouping
+    // -------------------------------------------------------
+
+    public function testParenthesizedArrayOfNullable(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  data: (int?)[]\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame('data', $props[0]->getName());
+        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $inner = $props[0]->getType()->getInnerType();
+        $this->assertTrue($inner->isNullable());
+        $this->assertSame(Type::KIND_SIMPLE, $inner->getInnerType()->getKind());
+        $this->assertSame('int', $inner->getInnerType()->getName());
+    }
+
+    public function testParenthesizedNullableUnion(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  data: (string|int)?\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame('data', $props[0]->getName());
+        $this->assertTrue($props[0]->getType()->isNullable());
+        $inner = $props[0]->getType()->getInnerType();
+        $this->assertSame(Type::KIND_UNION, $inner->getKind());
+        $unionTypes = $inner->getUnionTypes();
+        $this->assertCount(2, $unionTypes);
+        $this->assertSame('string', $unionTypes[0]->getName());
+        $this->assertSame('int', $unionTypes[1]->getName());
+    }
+
+    public function testParenthesizedUnionArray(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  tags: (string|int)[]\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame('tags', $props[0]->getName());
+        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $inner = $props[0]->getType()->getInnerType();
+        $this->assertSame(Type::KIND_UNION, $inner->getKind());
+        $unionTypes = $inner->getUnionTypes();
+        $this->assertCount(2, $unionTypes);
+        $this->assertSame('string', $unionTypes[0]->getName());
+        $this->assertSame('int', $unionTypes[1]->getName());
+    }
+
+    public function testParenthesizedNullableArrayOfNullable(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  data: (int?)[]?\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame('data', $props[0]->getName());
+        $this->assertTrue($props[0]->getType()->isNullable());
+        $arrayType = $props[0]->getType()->getInnerType();
+        $this->assertSame(Type::KIND_ARRAY, $arrayType->getKind());
+        $elementType = $arrayType->getInnerType();
+        $this->assertTrue($elementType->isNullable());
+        $this->assertSame('int', $elementType->getInnerType()->getName());
+    }
+
+    public function testParenthesizedNestedArrays(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  matrix: (int[])[]\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame('matrix', $props[0]->getName());
+        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $inner = $props[0]->getType()->getInnerType();
+        $this->assertSame(Type::KIND_ARRAY, $inner->getKind());
+        $this->assertSame('int', $inner->getInnerType()->getName());
+    }
+
+    public function testParenthesizedIdentityPreservesType(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  plain: (int)\n  arr: (int)[]\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame(Type::KIND_SIMPLE, $props[0]->getType()->getKind());
+        $this->assertSame('int', $props[0]->getType()->getName());
+
+        $this->assertSame(Type::KIND_ARRAY, $props[1]->getType()->getKind());
+        $this->assertSame('int', $props[1]->getType()->getInnerType()->getName());
+    }
+
+    public function testParenthesizedMultiplePropertiesMixed(): void
+    {
+        $def = $this->evaluateCode("Foo {\n  a: (int?)[]\n  b: string|int\n  c: (bool|float)?\n}");
+        $struct = $def->getStruct('Foo');
+        $props = $struct->getProperties();
+
+        $this->assertSame(Type::KIND_ARRAY, $props[0]->getType()->getKind());
+        $this->assertTrue($props[0]->getType()->getInnerType()->isNullable());
+
+        $this->assertSame(Type::KIND_UNION, $props[1]->getType()->getKind());
+        $this->assertFalse($props[1]->getType()->isNullable());
+
+        $this->assertTrue($props[2]->getType()->isNullable());
+        $this->assertSame(Type::KIND_UNION, $props[2]->getType()->getInnerType()->getKind());
+    }
+}

@@ -1,0 +1,299 @@
+// in schema script you can & must define types to be used in properties 
+
+// a simple type definition, happens through metadata
+// and is therefor also bound to be only available within the scope of the metadata
+// the metadata is inherited by child scopes, so the type is also available within the struct definitions
+[type] = {
+  // just drop the identifier here and the type is considered defined
+  // and valid for use in properties, but has no special meaning in the background
+  int64
+  int32
+  
+  // you can also define more complex types, like unions
+  intOrString = int|string
+}
+
+// types can alias other types
+
+[type] = {
+  timestamp = int64
+  uuid = string
+  email = string
+  url = string
+}
+
+User {
+  id: uuid
+  email: email
+  avatar_url: url?
+  created_at: timestamp
+}
+
+// types can define nullable aliases
+
+[type] = {
+  optionalString = string?
+  optionalImage = Image?
+}
+
+User {
+  id: int64
+  nickname: optionalString
+  avatar: optionalImage
+}
+
+// types can define arrays
+
+[type] = {
+  stringList = string[]
+  intList = int64[]
+  imageList = Image[]
+}
+
+Gallery {
+  id: int64
+  title: string
+  tags: stringList
+  images: imageList
+}
+
+// types can define object shapes
+
+[type] = {
+  point = {
+    x: float
+    y: float
+  }
+
+  size = {
+    width: int32
+    height: int32
+  }
+}
+
+Image {
+  id: int64
+  position: point
+  dimensions: size
+}
+
+// object types can be reused across multiple structs
+
+[type] = {
+  money = {
+    amount: int64
+    currency: string
+  }
+}
+
+Product {
+  id: int64
+  name: string
+  price: money
+}
+
+InvoiceItem {
+  id: int64
+  label: string
+  total: money
+}
+
+// types can compose other custom types
+
+[type] = {
+  uuid = string
+
+  imageRef = {
+    id: uuid
+    url: string
+  }
+
+  userPreview = {
+    id: uuid
+    name: string
+    avatar: imageRef?
+  }
+}
+
+User {
+  id: uuid
+  name: string
+  avatar: imageRef?
+}
+
+Comment {
+  id: uuid
+  author: userPreview
+  text: string
+}
+
+// types can model result-like structures
+
+[type] = {
+  error = {
+    code: string
+    message: string
+  }
+
+  userResult = User|error
+}
+
+UserResponse {
+  cached: bool
+  data: userResult
+}
+
+// types can be declared inside a scope
+// they are only available inside that scope and its children
+
+Api {
+  [type] = {
+    apiId = string
+    apiTimestamp = int64
+  }
+
+  Request {
+    id: apiId
+    received_at: apiTimestamp
+  }
+
+  Response {
+    id: apiId
+    sent_at: apiTimestamp
+  }
+}
+
+// types can be declared inside a scope
+// they are only available inside that scope and its children
+
+Api {
+  [type] = {
+    apiId = string
+    apiTimestamp = int64
+  }
+
+  Request {
+    id: apiId
+    received_at: apiTimestamp
+  }
+
+  Response {
+    id: apiId
+    sent_at: apiTimestamp
+  }
+}
+
+// scoped types do not leak back into the parent scope
+
+Admin {
+  [type] = {
+    permission = string
+  }
+
+  Role {
+    name: string
+    permissions: permission[]
+  }
+}
+
+// permission is not available here unless defined in the root scope
+User {
+  id: int64
+  name: string
+}
+
+// types can carry attributes, for example language-specific mappings
+
+[type] = {
+  @lang.php('int')
+  @lang.ts('bigint')
+  int64
+
+  @lang.php('int')
+  @lang.ts('number')
+  int32
+
+  @lang.php('string')
+  @lang.ts('string')
+  string
+}
+
+User {
+  id: int64
+  age: int32
+  name: string
+}
+
+// types can describe API-specific value shapes
+
+[type] = {
+  pagination = {
+    limit: int32
+    offset: int32
+    total: int32
+  }
+
+  userList = {
+    data: User[]
+    page: pagination
+  }
+}
+
+UserSearchResponse {
+  result: userList
+}
+
+// types can define discriminated unions
+
+[type] = {
+  textMessage = {
+    type: string
+    text: string
+  }
+
+  imageMessage = {
+    type: string
+    image: Image
+  }
+
+  messageContent = textMessage|imageMessage
+}
+
+Message {
+  id: int64
+  content: messageContent
+}
+
+// types can define recursive-like structures
+// if the schema system allows referencing the containing type name
+
+[type] = {
+  menuItem = {
+    label: string
+    url: string?
+    children: menuItem[]
+  }
+}
+
+Navigation {
+  items: menuItem[]
+}
+
+// types can represent literals or constant-like values
+
+[type] = {
+  messageType = 'text'|'image'|'video'
+  visibility = 'public'|'private'|'internal'
+}
+
+Message {
+  id: int64
+  type: messageType
+  text: string?
+}
+
+Document {
+  id: int64
+  visibility: visibility
+}
+

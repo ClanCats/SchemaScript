@@ -1,0 +1,6 @@
+import scsc/base
+
+Post {
+    id: int
+    title: string
+}

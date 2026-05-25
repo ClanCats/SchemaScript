@@ -1,37 +1,57 @@
+import scsc/base
+
+[version] = 1
+[type] = {
+  
+  @lang.php('int')
+  @lang.ts('bigint')
+  int64
+
+  @lang.php('int')
+  @lang.ts('number')
+  int32
+
+}
+
+ns MappingType {
+  const camelCase
+  const snake_case
+}
 
 User {
-    .version = 2
+  [version] = 2
+  [map:local] = MappingType::camelCase
 
-    // simple declartion a property "id" of type "int"
-    id: int
+  // The users ID
+  id: int
 
-    // a declaration with a local accessor and a nullable "int" type
-    avatar_image_id from avatarImageId: int?
+  @local(avatarImageId)
+  avatar_image_id: int?
 
-    avatar_image_id(avatarImageId): int?
+  avatar_image?: {
+    data: Image?
+  }
 
-    avatar_image_id -> avatarImageId: int?
-
-    avatar_image_id @avatarImageId: int?
-
-    avatar_image?: {
-        data: Image
-    }
-
-    last_messages: Message[]
+  // the last message the user sent
+  last_messages: {
+    cached: bool
+    data: Message[]
+  }
 }
 
 Image {
-    colors: int[]
-    proxy: {
-        s1x1: string
-    }
+  colors: int[]
+  proxy: {
+    s1x1: string
+  }
 }
 
 Message {
-    unseen: bool
-    context: {
-        type: string
-        data: Image|User
-    } 
+  unseen: bool
+  text: string
+  context: {
+    @enum("text", "image")
+    type: string
+    data: Image|User
+  } 
 }

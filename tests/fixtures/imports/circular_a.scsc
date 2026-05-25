@@ -1,0 +1,6 @@
+import scsc/base
+import circular_b
+
+ModelA {
+    id: int
+}

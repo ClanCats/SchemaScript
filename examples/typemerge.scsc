@@ -1,0 +1,13 @@
+const pk_field = id
+const pk_type = int
+
+#pk {
+    pk_field: pk_type
+}
+
+User {
+    use #pk 
+
+    pk: pk_t
+    name: string
+}

@@ -1,0 +1,44 @@
+// in schema script you can define constants which can be used 
+// within you schema declarations and within metadata blocks.
+
+// a constant can also define a identifier
+const PK = id
+
+Car {
+  // the primary key of the car, using the defined constant
+  PK: int
+  // the name of the car
+  name: string
+}
+
+// ----------------------------------------------------------------------------
+
+// a constant can be used to alias a type
+const timestamp = uint64
+
+Event {
+  // the time the event occurred, using the timestamp type alias
+  time: timestamp
+  // the name of the event
+  name: string
+}
+
+// ----------------------------------------------------------------------------
+
+// constants can reference enum-like identifiers
+
+ns Visibility {
+  const public
+  const private
+  const internal
+}
+
+const defaultVisibility = Visibility::internal
+
+Document {
+  [visibility] = defaultVisibility
+
+  id: int64
+  title: string
+  content: string
+}

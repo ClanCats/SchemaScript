@@ -1,0 +1,126 @@
+// metadata is data, config etc 
+// that can be defined freely within the schema.
+// metadata is attached to the current scope, and can hold it owns hirarchy of metadata.
+
+// stores a version metadata block in the root scope
+[version] = 1
+
+// within a metadata block, you can define properties freely
+[somthing] = {
+  foo = 'bar'
+  // you can also nest metadata blocks
+  nested = {
+    // and even more nesting
+    deeper = {
+      value = 42
+    }
+  }
+}
+
+// metadata can also contain lists of elements
+[colors] = {'red', 'green', 'blue'}
+
+// metadata can be defined on any scope, and is inherited by child scopes
+User {
+  [spcial] = 'value'
+  [alias] = {
+    frontend = 'Account'
+    backend = 'User'
+  }
+
+  id: int
+}
+
+// when defining a metadata [block] the data structure in the background is a object, so think of the following:
+[block] = {
+    [keyA] = 'example1'
+    [keyB] = 'example2'
+}
+
+// as the json equivalent of:
+// {
+//   "metadata": [
+//     {
+//       "key": "block",
+//       "value": [
+//         {
+//           "key": "keyA",
+//           "value": "example1",
+//           "attributes": []
+//         },
+//         {
+//           "key": "keyB",
+//           "value": "example2",
+//           "attributes": []
+//         }
+//       ],
+//       "attributes": []
+//     }
+//   ]
+// }
+
+// this way depending on the use case, values are not nessesarly overriden but can be merged together.
+
+// metadata can support most common data types:
+[metadata] = {
+  string = 'example'
+  int = 42
+  float = 3.14
+  bool = true
+  array = {'a', 'b', 'c'}
+  object = {
+    key1 = 'value1'
+    key2 = 'value2'
+  }
+}
+
+// metadata can also hold attributes
+[metadataWithAttributes] = {
+  @a('example')
+  value = 'fooo'
+}
+
+// metadata blocks can also contain identifiers as values
+[metadataWithIdentifier] = {
+  @a('example')
+  value = someIdentifier
+}
+
+// even without the need of key value pairs
+[metadataWithIdentifierOnly] = {
+  @a('example')
+  someIdentifier
+
+  @a('another')
+  anotherIdentifier
+}
+
+// think of the json equivalent of the above as:
+// {
+//   "metadata": [
+//     {
+//       "key": "metadataWithIdentifierOnly",
+//       "value": {
+//         "someIdentifier": {
+//           "value": null,
+//           "attributes": [
+//             {
+//               "key": "a",
+//               "value": "example"
+//             }
+//           ]
+//         },
+//         "anotherIdentifier": {
+//           "value": null,
+//           "attributes": [
+//             {
+//               "key": "a",
+//               "value": "another"
+//             }
+//           ]
+//         }
+//       },
+//       "attributes": []
+//     }
+//   ]
+// }

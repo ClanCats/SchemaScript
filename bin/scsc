@@ -1,0 +1,182 @@
+#!/usr/bin/env php
+<?php
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (file_exists($autoload)) {
+        require $autoload;
+        break;
+    }
+}
+
+use ClanCats\SchemaScript\Lexer;
+use ClanCats\SchemaScript\Parser\ScopeParser;
+use ClanCats\SchemaScript\Schema\SchemaEvaluator;
+use ClanCats\SchemaScript\Visitor\ASTPrinter;
+use ClanCats\SchemaScript\Generator\GeneratorRegistry;
+use ClanCats\SchemaScript\Generator\Php\PhpMappersGenerator;
+use ClanCats\SchemaScript\Generator\Ts\TsTypesGenerator;
+use ClanCats\SchemaScript\ErrorFormatter;
+use ClanCats\SchemaScript\Exception\LexerException;
+use ClanCats\SchemaScript\Exception\ParserException;
+use ClanCats\SchemaScript\Exception\EvaluatorException;
+use ClanCats\SchemaScript\Builder;
+
+if (in_array('--list-gen', $argv, true)) {
+    $registry = new GeneratorRegistry();
+    $registry->register(new PhpMappersGenerator());
+    $registry->register(new TsTypesGenerator());
+
+    echo "Available generators:\n\n";
+    foreach ($registry->getAll() as $name => $generator) {
+        echo "  {$name}\n";
+        echo "    {$generator->getDescription()}\n\n";
+    }
+    exit(0);
+}
+
+if ($argc < 2) {
+    fwrite(STDERR, "Usage: scsc <file.scsc>\n");
+    fwrite(STDERR, "       scsc build\n");
+    fwrite(STDERR, "       scsc gen <generator> <file.scsc> [--output=<dir>] [--stdout]\n");
+    exit(1);
+}
+
+if ($argv[1] === 'build') {
+    $schemaFile = getcwd() . '/SCHEMA.scsc';
+
+    if (!file_exists($schemaFile)) {
+        fwrite(STDERR, "Error: No SCHEMA.scsc found in current directory\n");
+        exit(1);
+    }
+
+    $registry = new GeneratorRegistry();
+    $registry->register(new PhpMappersGenerator());
+    $registry->register(new TsTypesGenerator());
+
+    $builder = new Builder($registry);
+
+    try {
+        $written = $builder->build($schemaFile, getcwd());
+    } catch (\Exception $e) {
+        fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
+        exit(1);
+    }
+
+    foreach ($written as $genName => $files) {
+        echo "Generator: {$genName}\n";
+        foreach ($files as $file) {
+            echo "  wrote {$file}\n";
+        }
+    }
+
+    exit(0);
+}
+
+if ($argv[1] === 'gen') {
+    if ($argc < 4) {
+        fwrite(STDERR, "Usage: scsc gen <generator> <file.scsc> [--output=<dir>] [--stdout]\n");
+        exit(1);
+    }
+
+    $generatorName = $argv[2];
+    $file = $argv[3];
+
+    $outputDir = null;
+    $toStdout = false;
+
+    for ($i = 4; $i < $argc; $i++) {
+        if (str_starts_with($argv[$i], '--output=')) {
+            $outputDir = substr($argv[$i], 9);
+        } elseif ($argv[$i] === '--stdout') {
+            $toStdout = true;
+        }
+    }
+
+    if (!file_exists($file)) {
+        fwrite(STDERR, "Error: File not found: {$file}\n");
+        exit(1);
+    }
+
+    $registry = new GeneratorRegistry();
+    $registry->register(new PhpMappersGenerator());
+    $registry->register(new TsTypesGenerator());
+
+    if (!$registry->has($generatorName)) {
+        fwrite(STDERR, "Error: Unknown generator '{$generatorName}'. Available: " . implode(', ', $registry->getNames()) . "\n");
+        exit(1);
+    }
+
+    $code = file_get_contents($file);
+
+    try {
+        $namespace = new \ClanCats\SchemaScript\SchemaNamespace();
+        $namespace->importStdlib();
+        $tokens = (new Lexer($code, $file))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+        $definition = (new SchemaEvaluator($namespace))->evaluate($scope);
+    } catch (LexerException|ParserException $e) {
+        if ($e->getSourceCode() === null) {
+            $e->setSourceContext($e->getSourceLine() ?? 0, $e->getSourceColumn() ?? 0, $e->getSourceFile(), $code, $e->getSourceLength());
+        }
+        fwrite(STDERR, ErrorFormatter::format($e) . "\n");
+        exit(1);
+    } catch (EvaluatorException $e) {
+        fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
+        exit(1);
+    }
+
+    if ($outputDir === null && !$toStdout) {
+        $meta = $definition->getMetadata();
+        $outputDir = $meta['output:php'] ?? null;
+    }
+
+    if ($outputDir === null && !$toStdout) {
+        fwrite(STDERR, "Error: No output directory specified. Use --output=<dir>, --stdout, or set [output:php] in the schema.\n");
+        exit(1);
+    }
+
+    $generator = $registry->get($generatorName);
+    $result = $generator->generate($definition);
+
+    if ($toStdout) {
+        foreach ($result->getFiles() as $filename => $content) {
+            echo "// === {$filename} ===\n";
+            echo $content;
+            echo "\n";
+        }
+    } else {
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0755, true);
+        }
+        foreach ($result->getFiles() as $filename => $content) {
+            $path = rtrim($outputDir, '/') . '/' . $filename;
+            file_put_contents($path, $content);
+            echo "  wrote {$path}\n";
+        }
+    }
+
+    exit(0);
+}
+
+$file = $argv[1];
+
+if (!file_exists($file)) {
+    fwrite(STDERR, "Error: File not found: {$file}\n");
+    exit(1);
+}
+
+$code = file_get_contents($file);
+
+try {
+    $tokens = (new Lexer($code, $file))->tokens();
+    $scope = (new ScopeParser($tokens))->parse();
+} catch (LexerException|ParserException $e) {
+    if ($e->getSourceCode() === null) {
+        $e->setSourceContext($e->getSourceLine() ?? 0, $e->getSourceColumn() ?? 0, $e->getSourceFile(), $code, $e->getSourceLength());
+    }
+    fwrite(STDERR, ErrorFormatter::format($e) . "\n");
+    exit(1);
+}
+
+$printer = new ASTPrinter();
+echo $printer->print($scope);

@@ -1,0 +1,10 @@
+import scsc/base
+
+ns Mapping {
+    const camelCase
+}
+
+Timestamps {
+    created_at: string
+    updated_at: string
+}

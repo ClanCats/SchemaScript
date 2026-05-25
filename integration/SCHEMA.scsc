@@ -1,0 +1,20 @@
+import scsc/base
+
+[version] = 1
+
+[generate] = {
+  [php.mappers] = {
+    output = 'output/php/Mappers/'
+    namespace = 'IntegrationEx\\Mappers\\'
+  }
+  [ts.types] = {
+    output = 'output/ts/types/'
+  }
+}
+
+const pk_t = uint64
+
+User {
+    id: pk_t
+    name: string
+}

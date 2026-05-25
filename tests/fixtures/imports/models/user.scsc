@@ -1,0 +1,7 @@
+import scsc/base
+import common
+
+User {
+    id: int
+    name: string
+}
