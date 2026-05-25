@@ -110,10 +110,10 @@ SCSC;
         $metadata = $def->getMetadata();
 
         $this->assertCount(2, $metadata);
-        $this->assertSame('version', $metadata[0]['key']);
-        $this->assertSame(1, $metadata[0]['value']);
-        $this->assertTrue($metadata[0]['attributes']->isEmpty());
-        $this->assertSame('SCSCConfig', $metadata[1]['key']);
+        $this->assertSame('version', $metadata[0]->getKey());
+        $this->assertSame(1, $metadata[0]->getValue());
+        $this->assertTrue($metadata[0]->getAttributes()->isEmpty());
+        $this->assertSame('SCSCConfig', $metadata[1]->getKey());
     }
 
     public function testTypeAliases(): void
@@ -358,11 +358,11 @@ SCSC;
         $def = $this->evaluateCode("[version] = 1\n[version] = 2\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
         $this->assertCount(3, $metadata);
-        $this->assertSame('version', $metadata[0]['key']);
-        $this->assertSame(1, $metadata[0]['value']);
-        $this->assertSame('version', $metadata[1]['key']);
-        $this->assertSame(2, $metadata[1]['value']);
-        $this->assertSame('SCSCConfig', $metadata[2]['key']);
+        $this->assertSame('version', $metadata[0]->getKey());
+        $this->assertSame(1, $metadata[0]->getValue());
+        $this->assertSame('version', $metadata[1]->getKey());
+        $this->assertSame(2, $metadata[1]->getValue());
+        $this->assertSame('SCSCConfig', $metadata[2]->getKey());
     }
 
     public function testDuplicateAnnotationThrows(): void
@@ -423,77 +423,77 @@ SCSC;
         $def = $this->evaluateCode("[config] = {\n  foo = 'bar'\n  num = 42\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
         $this->assertCount(2, $metadata);
-        $this->assertSame('config', $metadata[0]['key']);
-        $this->assertIsArray($metadata[0]['value']);
-        $entries = $metadata[0]['value'];
+        $this->assertSame('config', $metadata[0]->getKey());
+        $this->assertIsArray($metadata[0]->getValue());
+        $entries = $metadata[0]->getValue();
         $this->assertCount(2, $entries);
-        $this->assertSame('foo', $entries[0]['key']);
-        $this->assertSame('bar', $entries[0]['value']);
-        $this->assertSame('num', $entries[1]['key']);
-        $this->assertSame(42, $entries[1]['value']);
+        $this->assertSame('foo', $entries[0]->getKey());
+        $this->assertSame('bar', $entries[0]->getValue());
+        $this->assertSame('num', $entries[1]->getKey());
+        $this->assertSame(42, $entries[1]->getValue());
     }
 
     public function testMetadataList(): void
     {
         $def = $this->evaluateCode("[colors] = {'red', 'green', 'blue'}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $this->assertSame('colors', $metadata[0]['key']);
-        $this->assertSame(['red', 'green', 'blue'], $metadata[0]['value']);
+        $this->assertSame('colors', $metadata[0]->getKey());
+        $this->assertSame(['red', 'green', 'blue'], $metadata[0]->getValue());
     }
 
     public function testMetadataBoolean(): void
     {
         $def = $this->evaluateCode("[enabled] = true\n[disabled] = false\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $this->assertTrue($metadata[0]['value']);
-        $this->assertFalse($metadata[1]['value']);
+        $this->assertTrue($metadata[0]->getValue());
+        $this->assertFalse($metadata[1]->getValue());
     }
 
     public function testMetadataNestedBlock(): void
     {
         $def = $this->evaluateCode("[outer] = {\n  inner = {\n    value = 'deep'\n  }\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $outer = $metadata[0]['value'];
+        $outer = $metadata[0]->getValue();
         $this->assertCount(1, $outer);
-        $inner = $outer[0]['value'];
+        $inner = $outer[0]->getValue();
         $this->assertCount(1, $inner);
-        $this->assertSame('value', $inner[0]['key']);
-        $this->assertSame('deep', $inner[0]['value']);
+        $this->assertSame('value', $inner[0]->getKey());
+        $this->assertSame('deep', $inner[0]->getValue());
     }
 
     public function testMetadataWithAnnotatedEntry(): void
     {
         $def = $this->evaluateCode("[meta] = {\n  @a('example')\n  value = 'fooo'\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $entries = $metadata[0]['value'];
+        $entries = $metadata[0]->getValue();
         $this->assertCount(1, $entries);
-        $this->assertSame('value', $entries[0]['key']);
-        $this->assertSame('fooo', $entries[0]['value']);
-        $this->assertTrue($entries[0]['attributes']->has('a'));
-        $this->assertSame(['example'], $entries[0]['attributes']->get('a')->getArguments());
+        $this->assertSame('value', $entries[0]->getKey());
+        $this->assertSame('fooo', $entries[0]->getValue());
+        $this->assertTrue($entries[0]->getAttributes()->has('a'));
+        $this->assertSame(['example'], $entries[0]->getAttributes()->get('a')->getArguments());
     }
 
     public function testMetadataStandaloneIdentifier(): void
     {
         $def = $this->evaluateCode("[meta] = {\n  @a('x')\n  someId\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $entries = $metadata[0]['value'];
+        $entries = $metadata[0]->getValue();
         $this->assertCount(1, $entries);
-        $this->assertSame('someId', $entries[0]['key']);
-        $this->assertNull($entries[0]['value']);
-        $this->assertTrue($entries[0]['attributes']->has('a'));
+        $this->assertSame('someId', $entries[0]->getKey());
+        $this->assertNull($entries[0]->getValue());
+        $this->assertTrue($entries[0]->getAttributes()->has('a'));
     }
 
     public function testMetadataWithMetadataKeyEntries(): void
     {
         $def = $this->evaluateCode("[block] = {\n  [keyA] = 'val1'\n  [keyB] = 'val2'\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $entries = $metadata[0]['value'];
+        $entries = $metadata[0]->getValue();
         $this->assertCount(2, $entries);
-        $this->assertSame('keyA', $entries[0]['key']);
-        $this->assertSame('val1', $entries[0]['value']);
-        $this->assertSame('keyB', $entries[1]['key']);
-        $this->assertSame('val2', $entries[1]['value']);
+        $this->assertSame('keyA', $entries[0]->getKey());
+        $this->assertSame('val1', $entries[0]->getValue());
+        $this->assertSame('keyB', $entries[1]->getKey());
+        $this->assertSame('val2', $entries[1]->getValue());
     }
 
     public function testModelMetadataBlock(): void
@@ -501,156 +501,154 @@ SCSC;
         $def = $this->evaluateCode("Foo {\n  [alias] = {\n    frontend = 'Account'\n    backend = 'User'\n  }\n  x: int\n}");
         $metadata = $def->getStruct('Foo')->getMetadata();
         $this->assertCount(1, $metadata);
-        $entries = $metadata[0]['value'];
+        $entries = $metadata[0]->getValue();
         $this->assertCount(2, $entries);
-        $this->assertSame('frontend', $entries[0]['key']);
-        $this->assertSame('Account', $entries[0]['value']);
+        $this->assertSame('frontend', $entries[0]->getKey());
+        $this->assertSame('Account', $entries[0]->getValue());
     }
 
     public function testMetadataEntryStructure(): void
     {
         $def = $this->evaluateCode("[key] = 'val'\nFoo {\n  x: int\n}");
         $entry = $def->getMetadata()[0];
-        $this->assertArrayHasKey('key', $entry);
-        $this->assertArrayHasKey('value', $entry);
-        $this->assertArrayHasKey('attributes', $entry);
-        $this->assertSame('key', $entry['key']);
-        $this->assertSame('val', $entry['value']);
-        $this->assertTrue($entry['attributes']->isEmpty());
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Schema\MetadataEntry::class, $entry);
+        $this->assertSame('key', $entry->getKey());
+        $this->assertSame('val', $entry->getValue());
+        $this->assertTrue($entry->getAttributes()->isEmpty());
     }
 
     public function testMetadataListWithNumbers(): void
     {
         $def = $this->evaluateCode("[nums] = {1, 2, 3}\nFoo {\n  x: int\n}");
-        $this->assertSame([1, 2, 3], $def->getMetadata()[0]['value']);
+        $this->assertSame([1, 2, 3], $def->getMetadata()[0]->getValue());
     }
 
     public function testMetadataListWithMixedTypes(): void
     {
         $def = $this->evaluateCode("[mix] = {'text', 42, 3.14}\nFoo {\n  x: int\n}");
-        $this->assertSame(['text', 42, 3.14], $def->getMetadata()[0]['value']);
+        $this->assertSame(['text', 42, 3.14], $def->getMetadata()[0]->getValue());
     }
 
     public function testMetadataBlockAllTypes(): void
     {
         $def = $this->evaluateCode("[all] = {\n  str = 'hello'\n  num = 42\n  flt = 3.14\n  yes = true\n  no = false\n  arr = {'a', 'b'}\n  obj = {\n    nested = 'val'\n  }\n}\nFoo {\n  x: int\n}");
         $metadata = $def->getMetadata();
-        $entries = $metadata[0]['value'];
+        $entries = $metadata[0]->getValue();
         $this->assertCount(7, $entries);
 
-        $this->assertSame('str', $entries[0]['key']);
-        $this->assertSame('hello', $entries[0]['value']);
+        $this->assertSame('str', $entries[0]->getKey());
+        $this->assertSame('hello', $entries[0]->getValue());
 
-        $this->assertSame('num', $entries[1]['key']);
-        $this->assertSame(42, $entries[1]['value']);
+        $this->assertSame('num', $entries[1]->getKey());
+        $this->assertSame(42, $entries[1]->getValue());
 
-        $this->assertSame('flt', $entries[2]['key']);
-        $this->assertSame(3.14, $entries[2]['value']);
+        $this->assertSame('flt', $entries[2]->getKey());
+        $this->assertSame(3.14, $entries[2]->getValue());
 
-        $this->assertSame('yes', $entries[3]['key']);
-        $this->assertTrue($entries[3]['value']);
+        $this->assertSame('yes', $entries[3]->getKey());
+        $this->assertTrue($entries[3]->getValue());
 
-        $this->assertSame('no', $entries[4]['key']);
-        $this->assertFalse($entries[4]['value']);
+        $this->assertSame('no', $entries[4]->getKey());
+        $this->assertFalse($entries[4]->getValue());
 
-        $this->assertSame('arr', $entries[5]['key']);
-        $this->assertSame(['a', 'b'], $entries[5]['value']);
+        $this->assertSame('arr', $entries[5]->getKey());
+        $this->assertSame(['a', 'b'], $entries[5]->getValue());
 
-        $this->assertSame('obj', $entries[6]['key']);
-        $this->assertIsArray($entries[6]['value']);
-        $this->assertCount(1, $entries[6]['value']);
-        $this->assertSame('nested', $entries[6]['value'][0]['key']);
-        $this->assertSame('val', $entries[6]['value'][0]['value']);
+        $this->assertSame('obj', $entries[6]->getKey());
+        $this->assertIsArray($entries[6]->getValue());
+        $this->assertCount(1, $entries[6]->getValue());
+        $this->assertSame('nested', $entries[6]->getValue()[0]->getKey());
+        $this->assertSame('val', $entries[6]->getValue()[0]->getValue());
     }
 
     public function testMetadataThreeLevelNesting(): void
     {
         $def = $this->evaluateCode("[root] = {\n  l1 = {\n    l2 = {\n      l3 = 'deep'\n    }\n  }\n}\nFoo {\n  x: int\n}");
-        $root = $def->getMetadata()[0]['value'];
-        $l1 = $root[0]['value'];
-        $l2 = $l1[0]['value'];
-        $this->assertSame('l3', $l2[0]['key']);
-        $this->assertSame('deep', $l2[0]['value']);
+        $root = $def->getMetadata()[0]->getValue();
+        $l1 = $root[0]->getValue();
+        $l2 = $l1[0]->getValue();
+        $this->assertSame('l3', $l2[0]->getKey());
+        $this->assertSame('deep', $l2[0]->getValue());
     }
 
     public function testMetadataAnnotatedEntryAttributes(): void
     {
         $def = $this->evaluateCode("[meta] = {\n  @first\n  @second('a', 'b')\n  entry = 'val'\n}\nFoo {\n  x: int\n}");
-        $entry = $def->getMetadata()[0]['value'][0];
-        $this->assertSame('entry', $entry['key']);
-        $this->assertSame('val', $entry['value']);
-        $this->assertTrue($entry['attributes']->has('first'));
-        $this->assertSame([], $entry['attributes']->get('first')->getArguments());
-        $this->assertTrue($entry['attributes']->has('second'));
-        $this->assertSame(['a', 'b'], $entry['attributes']->get('second')->getArguments());
+        $entry = $def->getMetadata()[0]->getValue()[0];
+        $this->assertSame('entry', $entry->getKey());
+        $this->assertSame('val', $entry->getValue());
+        $this->assertTrue($entry->getAttributes()->has('first'));
+        $this->assertSame([], $entry->getAttributes()->get('first')->getArguments());
+        $this->assertTrue($entry->getAttributes()->has('second'));
+        $this->assertSame(['a', 'b'], $entry->getAttributes()->get('second')->getArguments());
     }
 
     public function testMetadataStandaloneIdentifierEvaluated(): void
     {
         $def = $this->evaluateCode("[flags] = {\n  @tag('x')\n  myFlag\n  @other\n  myOther\n  bare\n}\nFoo {\n  x: int\n}");
-        $entries = $def->getMetadata()[0]['value'];
+        $entries = $def->getMetadata()[0]->getValue();
         $this->assertCount(3, $entries);
 
-        $this->assertSame('myFlag', $entries[0]['key']);
-        $this->assertNull($entries[0]['value']);
-        $this->assertTrue($entries[0]['attributes']->has('tag'));
-        $this->assertSame(['x'], $entries[0]['attributes']->get('tag')->getArguments());
+        $this->assertSame('myFlag', $entries[0]->getKey());
+        $this->assertNull($entries[0]->getValue());
+        $this->assertTrue($entries[0]->getAttributes()->has('tag'));
+        $this->assertSame(['x'], $entries[0]->getAttributes()->get('tag')->getArguments());
 
-        $this->assertSame('myOther', $entries[1]['key']);
-        $this->assertNull($entries[1]['value']);
-        $this->assertTrue($entries[1]['attributes']->has('other'));
-        $this->assertSame([], $entries[1]['attributes']->get('other')->getArguments());
+        $this->assertSame('myOther', $entries[1]->getKey());
+        $this->assertNull($entries[1]->getValue());
+        $this->assertTrue($entries[1]->getAttributes()->has('other'));
+        $this->assertSame([], $entries[1]->getAttributes()->get('other')->getArguments());
 
-        $this->assertSame('bare', $entries[2]['key']);
-        $this->assertNull($entries[2]['value']);
-        $this->assertTrue($entries[2]['attributes']->isEmpty());
+        $this->assertSame('bare', $entries[2]->getKey());
+        $this->assertNull($entries[2]->getValue());
+        $this->assertTrue($entries[2]->getAttributes()->isEmpty());
     }
 
     public function testMetadataDuplicateBlockKeys(): void
     {
         $def = $this->evaluateCode("[gen] = {\n  [php.mappers] = {\n    version = 1\n  }\n  [php.mappers] = {\n    version = 2\n  }\n}\nFoo {\n  x: int\n}");
-        $entries = $def->getMetadata()[0]['value'];
+        $entries = $def->getMetadata()[0]->getValue();
         $this->assertCount(2, $entries);
-        $this->assertSame('php.mappers', $entries[0]['key']);
-        $this->assertSame('php.mappers', $entries[1]['key']);
-        $this->assertSame(1, $entries[0]['value'][0]['value']);
-        $this->assertSame(2, $entries[1]['value'][0]['value']);
+        $this->assertSame('php.mappers', $entries[0]->getKey());
+        $this->assertSame('php.mappers', $entries[1]->getKey());
+        $this->assertSame(1, $entries[0]->getValue()[0]->getValue());
+        $this->assertSame(2, $entries[1]->getValue()[0]->getValue());
     }
 
     public function testMetadataMixedEntryStyles(): void
     {
         $def = $this->evaluateCode("[mix] = {\n  [bracket] = 'a'\n  plain = 'b'\n  @tag\n  standaloneId\n}\nFoo {\n  x: int\n}");
-        $entries = $def->getMetadata()[0]['value'];
+        $entries = $def->getMetadata()[0]->getValue();
         $this->assertCount(3, $entries);
-        $this->assertSame('bracket', $entries[0]['key']);
-        $this->assertSame('a', $entries[0]['value']);
-        $this->assertSame('plain', $entries[1]['key']);
-        $this->assertSame('b', $entries[1]['value']);
-        $this->assertSame('standaloneId', $entries[2]['key']);
-        $this->assertNull($entries[2]['value']);
-        $this->assertTrue($entries[2]['attributes']->has('tag'));
+        $this->assertSame('bracket', $entries[0]->getKey());
+        $this->assertSame('a', $entries[0]->getValue());
+        $this->assertSame('plain', $entries[1]->getKey());
+        $this->assertSame('b', $entries[1]->getValue());
+        $this->assertSame('standaloneId', $entries[2]->getKey());
+        $this->assertNull($entries[2]->getValue());
+        $this->assertTrue($entries[2]->getAttributes()->has('tag'));
     }
 
     public function testMetadataEmptyBlockEvaluated(): void
     {
         $def = $this->evaluateCode("[empty] = {}\nFoo {\n  x: int\n}");
-        $this->assertSame([], $def->getMetadata()[0]['value']);
+        $this->assertSame([], $def->getMetadata()[0]->getValue());
     }
 
     public function testMetadataReferenceInBlock(): void
     {
         $def = $this->evaluateCode("ns Config {\n  const mode = 'debug'\n}\n[settings] = {\n  mode = Config::mode\n}\nFoo {\n  x: int\n}");
-        $entries = $def->getMetadata()[0]['value'];
-        $this->assertSame('mode', $entries[0]['key']);
-        $this->assertSame('debug', $entries[0]['value']);
+        $entries = $def->getMetadata()[0]->getValue();
+        $this->assertSame('mode', $entries[0]->getKey());
+        $this->assertSame('debug', $entries[0]->getValue());
     }
 
     public function testMetadataReferenceValuelessInBlock(): void
     {
         $def = $this->evaluateCode("ns Flags {\n  const enabled\n}\n[settings] = {\n  flag = Flags::enabled\n}\nFoo {\n  x: int\n}");
-        $entries = $def->getMetadata()[0]['value'];
-        $this->assertSame('flag', $entries[0]['key']);
-        $this->assertSame('Flags::enabled', $entries[0]['value']);
+        $entries = $def->getMetadata()[0]->getValue();
+        $this->assertSame('flag', $entries[0]->getKey());
+        $this->assertSame('Flags::enabled', $entries[0]->getValue());
     }
 
     public function testGetMetadataValueSearchesEntries(): void
@@ -672,17 +670,17 @@ SCSC;
     public function testMetadataNestedBlockWithListsEvaluated(): void
     {
         $def = $this->evaluateCode("[config] = {\n  tags = {'a', 'b'}\n  nested = {\n    nums = {1, 2}\n  }\n}\nFoo {\n  x: int\n}");
-        $entries = $def->getMetadata()[0]['value'];
+        $entries = $def->getMetadata()[0]->getValue();
         $this->assertCount(2, $entries);
 
-        $this->assertSame('tags', $entries[0]['key']);
-        $this->assertSame(['a', 'b'], $entries[0]['value']);
+        $this->assertSame('tags', $entries[0]->getKey());
+        $this->assertSame(['a', 'b'], $entries[0]->getValue());
 
-        $this->assertSame('nested', $entries[1]['key']);
-        $innerEntries = $entries[1]['value'];
+        $this->assertSame('nested', $entries[1]->getKey());
+        $innerEntries = $entries[1]->getValue();
         $this->assertCount(1, $innerEntries);
-        $this->assertSame('nums', $innerEntries[0]['key']);
-        $this->assertSame([1, 2], $innerEntries[0]['value']);
+        $this->assertSame('nums', $innerEntries[0]->getKey());
+        $this->assertSame([1, 2], $innerEntries[0]->getValue());
     }
 
     public function testModelMetadataWithReferenceEvaluated(): void
@@ -690,8 +688,8 @@ SCSC;
         $def = $this->evaluateCode("ns Mapping {\n  const camel\n}\nFoo {\n  [style] = Mapping::camel\n  [config] = {\n    ref = Mapping::camel\n  }\n  x: int\n}");
         $struct = $def->getStruct('Foo');
         $this->assertSame('Mapping::camel', $struct->getMetadataValue('style'));
-        $configEntries = $struct->getMetadata()[1]['value'];
-        $this->assertSame('Mapping::camel', $configEntries[0]['value']);
+        $configEntries = $struct->getMetadata()[1]->getValue();
+        $this->assertSame('Mapping::camel', $configEntries[0]->getValue());
     }
 
     public function testInlineObjectMetadataEvaluated(): void
@@ -701,10 +699,10 @@ SCSC;
         $this->assertNotNull($struct);
         $metadata = $struct->getMetadata();
         $this->assertCount(2, $metadata);
-        $this->assertSame('version', $metadata[0]['key']);
-        $this->assertSame(1, $metadata[0]['value']);
-        $this->assertSame('debug', $metadata[1]['key']);
-        $this->assertTrue($metadata[1]['value']);
+        $this->assertSame('version', $metadata[0]->getKey());
+        $this->assertSame(1, $metadata[0]->getValue());
+        $this->assertSame('debug', $metadata[1]->getKey());
+        $this->assertTrue($metadata[1]->getValue());
     }
 
     public function testIntegrationSchemaMetadata(): void
@@ -718,24 +716,26 @@ SCSC;
         $metadata = $def->getMetadata();
         $this->assertCount(4, $metadata);
 
-        $this->assertSame('version', $metadata[0]['key']);
-        $this->assertSame(1, $metadata[0]['value']);
+        $this->assertSame('version', $metadata[0]->getKey());
+        $this->assertSame(1, $metadata[0]->getValue());
 
-        $this->assertSame('generate', $metadata[1]['key']);
-        $generate = $metadata[1]['value'];
+        $this->assertSame('map', $metadata[1]->getKey());
+
+        $this->assertSame('generate', $metadata[2]->getKey());
+        $generate = $metadata[2]->getValue();
         $this->assertCount(2, $generate);
 
-        $this->assertSame('php.mappers', $generate[0]['key']);
-        $v1 = $generate[0]['value'];
-        $this->assertSame('output', $v1[0]['key']);
-        $this->assertSame('output/php/Mappers/', $v1[0]['value']);
-        $this->assertSame('namespace', $v1[1]['key']);
-        $this->assertSame('IntegrationEx\\Mappers\\', $v1[1]['value']);
+        $this->assertSame('php.mappers', $generate[0]->getKey());
+        $v1 = $generate[0]->getValue();
+        $this->assertSame('output', $v1[0]->getKey());
+        $this->assertSame('output/php/Mappers/', $v1[0]->getValue());
+        $this->assertSame('namespace', $v1[1]->getKey());
+        $this->assertSame('IntegrationEx\\Mappers\\', $v1[1]->getValue());
 
-        $this->assertSame('ts.types', $generate[1]['key']);
-        $v2 = $generate[1]['value'];
-        $this->assertSame('output', $v2[0]['key']);
-        $this->assertSame('output/ts/types/', $v2[0]['value']);
+        $this->assertSame('ts.types', $generate[1]->getKey());
+        $v2 = $generate[1]->getValue();
+        $this->assertSame('output', $v2[0]->getKey());
+        $this->assertSame('output/ts/types/', $v2[0]->getValue());
     }
 
     // -------------------------------------------------------

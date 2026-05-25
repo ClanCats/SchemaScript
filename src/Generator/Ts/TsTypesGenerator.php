@@ -14,21 +14,6 @@ use ClanCats\SchemaScript\Util\StringHelper;
 
 class TsTypesGenerator implements GeneratorInterface
 {
-    /**
-     * @var array<string, true>
-     */
-    private array $pubStructNames = [];
-
-    /**
-     * @var array<string, string>
-     */
-    private array $pubStructToAlias = [];
-
-    /**
-     * @var array<string, true>
-     */
-    private array $referencedPubTypes = [];
-
     public function getName(): string
     {
         return 'ts.types';
@@ -47,8 +32,8 @@ class TsTypesGenerator implements GeneratorInterface
         $includeComments = (bool) ($options['include_comments'] ?? false);
         $result = new GeneratorResult();
 
-        $this->pubStructNames = [];
-        $this->pubStructToAlias = [];
+        $ctx = new TsTypesContext();
+        $ctx->mapName = $options['map'] ?? null;
 
         $pubAliases = $definition->getPublicTypeAliases();
         foreach ($pubAliases as $aliasName => $aliasData) {
@@ -56,25 +41,25 @@ class TsTypesGenerator implements GeneratorInterface
             if ($resolved instanceof Type && $resolved->isReference()) {
                 $structName = $resolved->getName();
                 if ($structName !== null) {
-                    $this->pubStructNames[$structName] = true;
-                    $this->pubStructToAlias[$structName] = $aliasName;
+                    $ctx->pubStructNames[$structName] = true;
+                    $ctx->pubStructToAlias[$structName] = $aliasName;
                 }
             }
         }
 
         if (!empty($pubAliases)) {
-            $typesCode = $this->generateSharedTypes($pubAliases, $definition, $includeComments);
+            $typesCode = $this->generateSharedTypes($ctx, $pubAliases, $definition, $includeComments);
             $result->addFile('_types.ts', $typesCode);
         }
 
         foreach ($definition->getModels() as $struct) {
-            $this->referencedPubTypes = [];
-            $interfaceCode = $this->generateInterface($struct, $definition, $includeComments);
+            $ctx->resetReferencedPubTypes();
+            $interfaceCode = $this->generateInterface($ctx, $struct, $definition, $includeComments);
 
             $lines = [];
-            if (!empty($this->referencedPubTypes)) {
+            if (!empty($ctx->referencedPubTypes)) {
                 /** @var array<string> $imports */
-                $imports = array_keys($this->referencedPubTypes);
+                $imports = array_keys($ctx->referencedPubTypes);
                 sort($imports);
                 $lines[] = "import type { " . implode(', ', $imports) . " } from './_types';";
                 $lines[] = '';
@@ -90,7 +75,7 @@ class TsTypesGenerator implements GeneratorInterface
     /**
      * @param array<string, TypeAlias> $pubAliases
      */
-    private function generateSharedTypes(array $pubAliases, Definition $definition, bool $includeComments): string
+    private function generateSharedTypes(TsTypesContext $ctx, array $pubAliases, Definition $definition, bool $includeComments): string
     {
         $lines = [];
 
@@ -107,7 +92,7 @@ class TsTypesGenerator implements GeneratorInterface
                     }
                     $lines[] = 'export interface ' . $tsName . ' {';
                     foreach ($struct->getProperties() as $prop) {
-                        $lines[] = $this->generateProperty($prop, $definition, '  ', $includeComments);
+                        $lines[] = $this->generateProperty($ctx, $prop, $definition, '  ', $includeComments);
                     }
                     $lines[] = '}';
                     continue;
@@ -118,7 +103,7 @@ class TsTypesGenerator implements GeneratorInterface
                 if (!empty($lines)) {
                     $lines[] = '';
                 }
-                $tsType = $this->resolveType($resolved, $definition, '');
+                $tsType = $this->resolveType($ctx, $resolved, $definition, '');
                 $lines[] = 'export type ' . $tsName . ' = ' . $tsType . ';';
             }
         }
@@ -126,13 +111,13 @@ class TsTypesGenerator implements GeneratorInterface
         return implode("\n", $lines) . "\n";
     }
 
-    private function generateInterface(Struct $struct, Definition $definition, bool $includeComments): string
+    private function generateInterface(TsTypesContext $ctx, Struct $struct, Definition $definition, bool $includeComments): string
     {
         $lines = [];
         $lines[] = 'export interface ' . $struct->getName() . ' {';
 
         foreach ($struct->getProperties() as $prop) {
-            $lines[] = $this->generateProperty($prop, $definition, '  ', $includeComments);
+            $lines[] = $this->generateProperty($ctx, $prop, $definition, '  ', $includeComments);
         }
 
         $lines[] = '}';
@@ -140,7 +125,7 @@ class TsTypesGenerator implements GeneratorInterface
         return implode("\n", $lines) . "\n";
     }
 
-    private function generateProperty(StructProperty $prop, Definition $definition, string $indent, bool $includeComments = false): string
+    private function generateProperty(TsTypesContext $ctx, StructProperty $prop, Definition $definition, string $indent, bool $includeComments = false): string
     {
         $lines = [];
 
@@ -157,22 +142,24 @@ class TsTypesGenerator implements GeneratorInterface
             }
         }
 
-        $name = $prop->getName();
+        $name = $ctx->mapName !== null
+            ? $definition->resolveMapKey($ctx->mapName, $prop->getName(), $prop->getAnnotations())
+            : $prop->getName();
         $optional = $prop->isOptional() ? '?' : '';
-        $type = $this->resolveType($prop->getType(), $definition, $indent);
+        $type = $this->resolveType($ctx, $prop->getType(), $definition, $indent);
         $lines[] = "{$indent}{$name}{$optional}: {$type};";
 
         return implode("\n", $lines);
     }
 
-    private function resolveType(Type $type, Definition $definition, string $indent): string
+    private function resolveType(TsTypesContext $ctx, Type $type, Definition $definition, string $indent): string
     {
         if ($type->isNullable()) {
             $inner = $type->getInnerType();
             if ($inner === null) {
                 return 'null';
             }
-            return $this->resolveType($inner, $definition, $indent) . ' | null';
+            return $this->resolveType($ctx, $inner, $definition, $indent) . ' | null';
         }
 
         if ($type->isArray()) {
@@ -180,7 +167,7 @@ class TsTypesGenerator implements GeneratorInterface
             if ($inner === null) {
                 return 'unknown[]';
             }
-            $elementType = $this->resolveType($inner, $definition, $indent);
+            $elementType = $this->resolveType($ctx, $inner, $definition, $indent);
             if ($inner->isUnion() || $inner->isNullable()) {
                 return '(' . $elementType . ')[]';
             }
@@ -190,7 +177,7 @@ class TsTypesGenerator implements GeneratorInterface
         if ($type->isUnion()) {
             $parts = [];
             foreach ($type->getUnionTypes() as $unionType) {
-                $parts[] = $this->resolveType($unionType, $definition, $indent);
+                $parts[] = $this->resolveType($ctx, $unionType, $definition, $indent);
             }
             return implode(' | ', $parts);
         }
@@ -204,15 +191,15 @@ class TsTypesGenerator implements GeneratorInterface
             if ($refName === null) {
                 return 'unknown';
             }
-            if (isset($this->pubStructNames[$refName])) {
-                $aliasName = $this->pubStructToAlias[$refName];
+            if (isset($ctx->pubStructNames[$refName])) {
+                $aliasName = $ctx->pubStructToAlias[$refName];
                 $tsName = StringHelper::toPascalCase($aliasName);
-                $this->referencedPubTypes[$tsName] = true;
+                $ctx->referencedPubTypes[$tsName] = true;
                 return $tsName;
             }
             $struct = $definition->getStruct($refName);
             if ($struct !== null && $struct->isInline()) {
-                return $this->generateInlineObject($struct, $definition, $indent);
+                return $this->generateInlineObject($ctx, $struct, $definition, $indent);
             }
             return $refName;
         }
@@ -224,7 +211,7 @@ class TsTypesGenerator implements GeneratorInterface
             }
             if ($definition->isTypeAliasPublic($name)) {
                 $tsName = StringHelper::toPascalCase($name);
-                $this->referencedPubTypes[$tsName] = true;
+                $ctx->referencedPubTypes[$tsName] = true;
                 return $tsName;
             }
             $alias = $definition->getTypeAlias($name);
@@ -234,7 +221,7 @@ class TsTypesGenerator implements GeneratorInterface
             }
             $resolved = $definition->getTypeAliasResolvedType($name);
             if ($resolved !== null) {
-                return $this->resolveType($resolved, $definition, $indent);
+                return $this->resolveType($ctx, $resolved, $definition, $indent);
             }
             return $name;
         }
@@ -255,13 +242,13 @@ class TsTypesGenerator implements GeneratorInterface
         return 'unknown';
     }
 
-    private function generateInlineObject(Struct $struct, Definition $definition, string $indent): string
+    private function generateInlineObject(TsTypesContext $ctx, Struct $struct, Definition $definition, string $indent): string
     {
         $innerIndent = $indent . '  ';
         $lines = ['{'];
 
         foreach ($struct->getProperties() as $prop) {
-            $lines[] = $this->generateProperty($prop, $definition, $innerIndent);
+            $lines[] = $this->generateProperty($ctx, $prop, $definition, $innerIndent);
         }
 
         $lines[] = $indent . '}';

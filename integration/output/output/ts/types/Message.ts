@@ -6,6 +6,6 @@ export interface Message {
   text: string | null;
   actor: User | null;
   unseen?: boolean;
-  createdAt: number;
-  updatedAt: number;
+  created_at: number;
+  modified_at: number;
 }

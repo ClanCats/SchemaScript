@@ -20,9 +20,9 @@ class MessageMapper
             $result['unseen'] = (bool) $data['unseen'];
         }
 
-        $result['createdAt'] = (int) $data['createdAt'];
+        $result['createdAt'] = (int) $data['created_at'];
 
-        $result['updatedAt'] = (int) $data['updatedAt'];
+        $result['updatedAt'] = (int) $data['modified_at'];
 
         return $result;
     }
@@ -43,9 +43,9 @@ class MessageMapper
             $result['unseen'] = (bool) $data['unseen'];
         }
 
-        $result['createdAt'] = (int) $data['createdAt'];
+        $result['created_at'] = (int) $data['createdAt'];
 
-        $result['updatedAt'] = (int) $data['updatedAt'];
+        $result['modified_at'] = (int) $data['updatedAt'];
 
         return $result;
     }

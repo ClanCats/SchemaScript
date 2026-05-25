@@ -42,8 +42,8 @@ class Builder
         $written = [];
 
         foreach ($generateConfig as $genEntry) {
-            $genName = $genEntry['key'];
-            $genOptions = $this->flattenMetadataBlock($genEntry['value'] ?? []);
+            $genName = $genEntry->getKey();
+            $genOptions = $this->flattenMetadataBlock($genEntry->getValue() ?? []);
 
             $outputDir = $genOptions['output'] ?? null;
             if ($outputDir === null) {
@@ -71,14 +71,14 @@ class Builder
     }
 
     /**
-     * @param array<array{key: string, value: mixed, attributes: array<string, mixed[]>}> $entries
+     * @param array<Schema\MetadataEntry> $entries
      * @return array<string, mixed>
      */
     private function flattenMetadataBlock(array $entries): array
     {
         $result = [];
         foreach ($entries as $entry) {
-            $result[$entry['key']] = $entry['value'];
+            $result[$entry->getKey()] = $entry->getValue();
         }
         return $result;
     }

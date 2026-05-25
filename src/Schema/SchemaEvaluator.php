@@ -167,7 +167,7 @@ class SchemaEvaluator
 
     /**
      * @param array<MetadataEntryNode> $entryNodes
-     * @return array<array{key: string, value: mixed, attributes: AnnotationCollection}>
+     * @return array<MetadataEntry>
      */
     private function evaluateMetadata(array $entryNodes): array
     {
@@ -178,17 +178,14 @@ class SchemaEvaluator
         return $result;
     }
 
-    /**
-     * @return array{key: string, value: mixed, attributes: AnnotationCollection}
-     */
-    private function resolveMetadataEntry(MetadataEntryNode $node): array
+    private function resolveMetadataEntry(MetadataEntryNode $node): MetadataEntry
     {
         $value = $node->getValue();
-        return [
-            'key' => $node->getKey(),
-            'value' => $value !== null ? $this->resolveValue($value) : null,
-            'attributes' => $this->evaluateAnnotations($node->getAnnotations()),
-        ];
+        return new MetadataEntry(
+            $node->getKey(),
+            $value !== null ? $this->resolveValue($value) : null,
+            $this->evaluateAnnotations($node->getAnnotations()),
+        );
     }
 
     /**

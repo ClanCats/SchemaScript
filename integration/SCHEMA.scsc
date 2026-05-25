@@ -2,20 +2,26 @@ import scsc/base
 
 [version] = 1
 
+[map] = {
+  api = {
+    strategy = MappingStrategy::snakeCase
+  }
+  db = {
+    strategy = MappingStrategy::snakeCase
+  }
+}
+
 [generate] = {
   [php.mappers] = {
     output = 'output/php/Mappers/'
     namespace = 'IntegrationEx\\Mappers\\'
+    map_from = self
+    map_to = api
   }
   [ts.types] = {
     output = 'output/ts/types/'
     include_comments = true
-  }
-}
-
-[map] = {
-  api = {
-    strategy = MappingStrategy::camelCase
+    map = api 
   }
 }
 
@@ -59,7 +65,6 @@ Message {
   actor: User?
   unseen?: bool
   
-  @map.api(created_at)
   createdAt: int 
 
   @map.api(modified_at)

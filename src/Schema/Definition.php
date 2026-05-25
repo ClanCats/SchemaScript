@@ -2,10 +2,12 @@
 
 namespace ClanCats\SchemaScript\Schema;
 
+use ClanCats\SchemaScript\Workbench\Str;
+
 class Definition
 {
     /**
-     * @var array<array{key: string, value: mixed, attributes: AnnotationCollection}>
+     * @var array<MetadataEntry>
      */
     protected array $metadata;
 
@@ -25,7 +27,7 @@ class Definition
     protected array $structs;
 
     /**
-     * @param array<array{key: string, value: mixed, attributes: AnnotationCollection}> $metadata
+     * @param array<MetadataEntry> $metadata
      * @param array<string, TypeAlias> $typeAliases
      * @param array<string, array<string, mixed>> $namespaces
      * @param array<string, Struct> $structs
@@ -39,7 +41,7 @@ class Definition
     }
 
     /**
-     * @return array<array{key: string, value: mixed, attributes: AnnotationCollection}>
+     * @return array<MetadataEntry>
      */
     public function getMetadata(): array
     {
@@ -130,11 +132,56 @@ class Definition
     public function findMetadataValue(string $key)
     {
         foreach ($this->metadata as $entry) {
-            if ($entry['key'] === $key) {
-                return $entry['value'];
+            if ($entry->getKey() === $key) {
+                return $entry->getValue();
             }
         }
         return null;
+    }
+
+    public function resolveMapKey(string $mapName, string $propertyName, AnnotationCollection $annotations): string
+    {
+        if ($mapName === 'self') {
+            return $propertyName;
+        }
+
+        $override = $annotations->getMapKey($mapName);
+        if ($override !== null) {
+            return $override;
+        }
+
+        $maps = $this->findMetadataValue('map');
+        if (!is_array($maps)) {
+            return $propertyName;
+        }
+
+        $strategy = null;
+        foreach ($maps as $entry) {
+            if ($entry instanceof MetadataEntry && $entry->getKey() === $mapName) {
+                $mapValue = $entry->getValue();
+                if (is_array($mapValue)) {
+                    foreach ($mapValue as $sub) {
+                        if ($sub instanceof MetadataEntry && $sub->getKey() === 'strategy') {
+                            $strategy = $sub->getValue();
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($strategy === null) {
+            return $propertyName;
+        }
+
+        return match ($strategy) {
+            'MappingStrategy::camelCase' => Str::toCamelCase($propertyName),
+            'MappingStrategy::pascalCase' => Str::toPascalCase($propertyName),
+            'MappingStrategy::snakeCase' => Str::toSnakeCase($propertyName),
+            'MappingStrategy::screamingSnakeCase' => Str::toScreamingSnakeCase($propertyName),
+            'MappingStrategy::kebabCase' => Str::toKebabCase($propertyName),
+            default => $propertyName,
+        };
     }
 
     /**
@@ -161,10 +208,7 @@ class Definition
         $data = [];
 
         if ($this->metadata) {
-            $data['metadata'] = array_map(function (array $entry) {
-                $entry['attributes'] = $entry['attributes']->toArray();
-                return $entry;
-            }, $this->metadata);
+            $data['metadata'] = array_map(fn(MetadataEntry $e) => $e->toArray(), $this->metadata);
         }
 
         if ($this->typeAliases) {

@@ -37,8 +37,10 @@ ns Lang {
 
 ns MappingStrategy {
   const camelCase
-  const snakeCase
   const pascalCase
+  const snakeCase
+  const screamingSnakeCase
+  const kebabCase
 }
 
 [type] = {

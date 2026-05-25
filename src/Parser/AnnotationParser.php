@@ -62,13 +62,8 @@ class AnnotationParser extends SchemaParser
                 $identifier = $token->getValue();
                 $this->skipToken();
 
-                if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
-                    $parts = [$identifier];
-                    while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
-                        $this->skipToken();
-                        $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
-                        $this->skipToken();
-                    }
+                $parts = $this->parseDoubleColonSeparatedIdentifiers($identifier);
+                if (count($parts) >= 2) {
                     $this->arguments[] = new ReferenceNode(...$parts);
                 } else {
                     $this->arguments[] = new ValueNode(ValueNode::TYPE_IDENTIFIER, $identifier);

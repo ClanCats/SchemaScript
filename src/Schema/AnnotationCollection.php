@@ -34,6 +34,11 @@ class AnnotationCollection
         return $this->get('lang.' . $lang)?->getFirstArgument();
     }
 
+    public function getMapKey(string $mapName): ?string
+    {
+        return $this->get('map.' . $mapName)?->getFirstArgument();
+    }
+
     public function isEmpty(): bool
     {
         return empty($this->annotations);

@@ -202,6 +202,20 @@ abstract class SchemaParser
         return $node;
     }
 
+    /**
+     * @return array<string>
+     */
+    protected function parseDoubleColonSeparatedIdentifiers(string $firstPart): array
+    {
+        $parts = [$firstPart];
+        while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
+            $this->skipToken();
+            $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
+            $this->skipToken();
+        }
+        return $parts;
+    }
+
     protected function expectCurrentType(int $type): T
     {
         $token = $this->currentToken();

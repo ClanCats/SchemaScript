@@ -82,13 +82,8 @@ class ScopeParser extends SchemaParser
                     $identifier = $valueToken->getValue();
                     $this->skipToken();
 
-                    if (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
-                        $parts = [$identifier];
-                        while (!$this->parserIsDone() && $this->currentToken()->isType(T::TOKEN_DOUBLE_COLON)) {
-                            $this->skipToken();
-                            $parts[] = $this->expectCurrentType(T::TOKEN_IDENTIFIER)->getValue();
-                            $this->skipToken();
-                        }
+                    $parts = $this->parseDoubleColonSeparatedIdentifiers($identifier);
+                    if (count($parts) >= 2) {
                         $constant->setValue(new ReferenceNode(...$parts));
                     } else {
                         $constant->setValue(new ValueNode(ValueNode::TYPE_IDENTIFIER, $identifier));

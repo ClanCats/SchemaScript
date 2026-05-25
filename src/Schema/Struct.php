@@ -14,13 +14,13 @@ class Struct
     protected array $properties;
 
     /**
-     * @var array<array{key: string, value: mixed, attributes: AnnotationCollection}>
+     * @var array<MetadataEntry>
      */
     protected array $metadata;
 
     /**
      * @param array<StructProperty> $properties
-     * @param array<array{key: string, value: mixed, attributes: AnnotationCollection}> $metadata
+     * @param array<MetadataEntry> $metadata
      */
     public function __construct(string $name, bool $isInline, array $properties = [], array $metadata = [])
     {
@@ -49,7 +49,7 @@ class Struct
     }
 
     /**
-     * @return array<array{key: string, value: mixed, attributes: AnnotationCollection}>
+     * @return array<MetadataEntry>
      */
     public function getMetadata(): array
     {
@@ -62,8 +62,8 @@ class Struct
     public function getMetadataValue(string $key)
     {
         foreach ($this->metadata as $entry) {
-            if ($entry['key'] === $key) {
-                return $entry['value'];
+            if ($entry->getKey() === $key) {
+                return $entry->getValue();
             }
         }
         return null;
@@ -84,10 +84,7 @@ class Struct
         }
 
         if ($this->metadata) {
-            $data['metadata'] = array_map(function (array $entry) {
-                $entry['attributes'] = $entry['attributes']->toArray();
-                return $entry;
-            }, $this->metadata);
+            $data['metadata'] = array_map(fn(MetadataEntry $e) => $e->toArray(), $this->metadata);
         }
 
         return $data;
