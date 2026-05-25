@@ -79,11 +79,7 @@ class TypeBlockParser extends SchemaParser
                     $i++;
                 }
                 if ($i >= $count || !$tokens[$i]->isType(TokenType::Identifier)) {
-                    $e = new \ClanCats\SchemaScript\Exception\ParserException(
-                        sprintf('Expected type alias name after "pub" on line %d, column %d in file %s', $token->getLine(), $token->getColumn(), $token->getFilename() ?? 'unknown')
-                    );
-                    $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, 3);
-                    throw $e;
+                    throw $this->errorParsingAt('Expected type alias name after "pub"', $token);
                 }
                 $token = $tokens[$i];
             }
@@ -142,11 +138,10 @@ class TypeBlockParser extends SchemaParser
                 // detect unknown keywords on the same line
                 // (e.g., "bla MessageType = ..." where "bla" is not a valid keyword)
                 if ($i < $count && $tokens[$i]->isType(TokenType::Identifier)) {
-                    $e = new \ClanCats\SchemaScript\Exception\ParserException(
-                        sprintf('Unknown keyword "%s" in type block on line %d, column %d in file %s', $name, $token->getLine(), $token->getColumn(), $token->getFilename() ?? 'unknown')
+                    throw $this->errorParsingAt(
+                        sprintf('Unknown keyword "%s" in type block', $name),
+                        $token
                     );
-                    $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, strlen($name));
-                    throw $e;
                 }
 
                 // bare declaration (no = follows)
@@ -159,11 +154,10 @@ class TypeBlockParser extends SchemaParser
                 continue;
             }
 
-            $e = new \ClanCats\SchemaScript\Exception\ParserException(
-                sprintf('Unexpected token "%s" in type block on line %d, column %d in file %s', $token->getValue(), $token->getLine(), $token->getColumn(), $token->getFilename() ?? 'unknown')
+            throw $this->errorParsingAt(
+                sprintf('Unexpected token "%s" in type block', $token->getValue()),
+                $token
             );
-            $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, strlen((string) $token->getValue()));
-            throw $e;
         }
     }
 

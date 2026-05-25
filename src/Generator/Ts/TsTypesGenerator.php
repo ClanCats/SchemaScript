@@ -2,9 +2,9 @@
 
 namespace ClanCats\SchemaScript\Generator\Ts;
 
+use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
-use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Schema\Definition;
 use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
 use ClanCats\SchemaScript\Schema\Struct;
@@ -104,7 +104,8 @@ class TsTypesGenerator implements GeneratorInterface
                 if (!empty($lines)) {
                     $lines[] = '';
                 }
-                $tsType = $this->resolveType($ctx, $resolved, $definition, '');
+                $resolver = $this->createTypeResolver($ctx, $definition);
+                $tsType = $resolved->accept($resolver);
                 $lines[] = 'export type ' . $tsName . ' = ' . $tsType . ';';
             }
         }
@@ -152,100 +153,20 @@ class TsTypesGenerator implements GeneratorInterface
             ? MappingStrategyResolver::resolve($definition,$ctx->mapName, $prop->getName(), $prop->getAnnotations())
             : $prop->getName();
         $optional = $prop->isOptional() ? '?' : '';
-        $type = $this->resolveType($ctx, $prop->getType(), $definition, $indent);
+        $resolver = $this->createTypeResolver($ctx, $definition, $indent);
+        $type = $prop->getType()->accept($resolver);
         $lines[] = "{$indent}{$name}{$optional}: {$type};";
 
         return implode("\n", $lines);
     }
 
-    private function resolveType(TsTypesContext $ctx, Type $type, Definition $definition, string $indent): string
+    private function createTypeResolver(TsTypesContext $ctx, Definition $definition, string $indent = ''): TsTypeResolver
     {
-        if ($type->isNullable()) {
-            $inner = $type->getInnerType();
-            if ($inner === null) {
-                return 'null';
-            }
-            return $this->resolveType($ctx, $inner, $definition, $indent) . ' | null';
-        }
-
-        if ($type->isArray()) {
-            $inner = $type->getInnerType();
-            if ($inner === null) {
-                return 'unknown[]';
-            }
-            $elementType = $this->resolveType($ctx, $inner, $definition, $indent);
-            if ($inner->isUnion() || $inner->isNullable()) {
-                return '(' . $elementType . ')[]';
-            }
-            return $elementType . '[]';
-        }
-
-        if ($type->isUnion()) {
-            $parts = [];
-            foreach ($type->getUnionTypes() as $unionType) {
-                $parts[] = $this->resolveType($ctx, $unionType, $definition, $indent);
-            }
-            return implode(' | ', $parts);
-        }
-
-        if ($type->isStringLiteral()) {
-            return "'" . str_replace("'", "\\'", $type->getName() ?? '') . "'";
-        }
-
-        if ($type->isReference()) {
-            $refName = $type->getName();
-            if ($refName === null) {
-                return 'unknown';
-            }
-            if (isset($ctx->pubStructNames[$refName])) {
-                $aliasName = $ctx->pubStructToAlias[$refName];
-                $tsName = Str::toPascalCase($aliasName);
-                $ctx->referencedPubTypes[$tsName] = true;
-                return $tsName;
-            }
-            $struct = $definition->getStruct($refName);
-            if ($struct !== null && $struct->isInline()) {
-                return $this->generateInlineObject($ctx, $struct, $definition, $indent);
-            }
-            return $refName;
-        }
-
-        if ($type->isAlias()) {
-            $name = $type->getName();
-            if ($name === null) {
-                return 'unknown';
-            }
-            if ($definition->isTypeAliasPublic($name)) {
-                $tsName = Str::toPascalCase($name);
-                $ctx->referencedPubTypes[$tsName] = true;
-                return $tsName;
-            }
-            $alias = $definition->getTypeAlias($name);
-            $tsType = $alias?->getLangType('ts');
-            if ($tsType !== null) {
-                return $tsType;
-            }
-            $resolved = $definition->getTypeAliasResolvedType($name);
-            if ($resolved !== null) {
-                return $this->resolveType($ctx, $resolved, $definition, $indent);
-            }
-            return $name;
-        }
-
-        if ($type->isSimple()) {
-            $name = $type->getName();
-            if ($name === null) {
-                throw new GeneratorException('Encountered a simple type without a name');
-            }
-            $alias = $definition->getTypeAlias($name);
-            $tsType = $alias?->getLangType('ts');
-            if ($tsType === null) {
-                throw new GeneratorException(sprintf('No TypeScript type mapping found for type "%s"', $name));
-            }
-            return $tsType;
-        }
-
-        return 'unknown';
+        return new TsTypeResolver(
+            $ctx,
+            $definition,
+            fn(Struct $struct) => $this->generateInlineObject($ctx, $struct, $definition, $indent),
+        );
     }
 
     private function generateInlineObject(TsTypesContext $ctx, Struct $struct, Definition $definition, string $indent): string

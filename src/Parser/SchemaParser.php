@@ -248,16 +248,20 @@ abstract class SchemaParser
     protected function errorParsing(string $message): ParserException
     {
         if (!$this->parserIsDone()) {
-            $token = $this->currentToken();
-            $filename = $token->getFilename() ?? 'unknown';
-            $e = new ParserException(
-                sprintf('%s on line %d, column %d in file %s', $message, $token->getLine(), $token->getColumn(), $filename)
-            );
-            $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, strlen((string) $token->getValue()));
-            return $e;
+            return $this->errorParsingAt($message, $this->currentToken());
         }
 
         return new ParserException($message);
+    }
+
+    protected function errorParsingAt(string $message, T $token): ParserException
+    {
+        $filename = $token->getFilename() ?? 'unknown';
+        $e = new ParserException(
+            sprintf('%s on line %d, column %d in file %s', $message, $token->getLine(), $token->getColumn(), $filename)
+        );
+        $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, strlen((string) $token->getValue()));
+        return $e;
     }
 
     protected function capturePosition(BaseNode $node, T $token): void

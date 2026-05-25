@@ -105,7 +105,7 @@ class PhpMappersGenerator implements GeneratorInterface
 
             $varAccess = "\$data['{$readKey}']";
             try {
-                $cast = $this->generateCast($ctx, $prop->getType(), $varAccess, $definition, $direction);
+                $cast = $prop->getType()->accept($this->createCastVisitor($ctx, $definition, $direction, $varAccess));
             } catch (GeneratorException $e) {
                 throw (new GeneratorException($e->getMessage(), 0, $e))
                     ->setStructContext($struct->getName(), $prop->getName());
@@ -127,70 +127,15 @@ class PhpMappersGenerator implements GeneratorInterface
         return implode("\n", $lines);
     }
 
-    private function generateCast(PhpMappersContext $ctx, Type $type, string $access, Definition $definition, string $direction): string
+    private function createCastVisitor(PhpMappersContext $ctx, Definition $definition, string $direction, string $access): PhpMappersCastVisitor
     {
-        if ($type->isNullable() || $type->isArray()) {
-            $innerType = $type->getInnerType();
-            if ($innerType === null) {
-                return $access;
-            }
-            if ($type->isNullable()) {
-                $inner = $this->generateCast($ctx, $innerType, $access, $definition, $direction);
-                return "({$access} !== null ? {$inner} : null)";
-            }
-            $elementCast = $this->generateCast($ctx, $innerType, '$v', $definition, $direction);
-            return "array_map(fn(\$v) => {$elementCast}, {$access})";
-        }
-
-        $name = $type->getName();
-        if ($name === null) {
-            return $access;
-        }
-
-        if ($type->isReference()) {
-            $struct = $definition->getStruct($name);
-            if ($struct !== null && $struct->isInline()) {
-                if (isset($ctx->pubStructToMapper[$name])) {
-                    $mapperName = $ctx->pubStructToMapper[$name];
-                    return $mapperName . "Mapper::{$direction}({$access})";
-                }
-                return $this->generateInlineCast($ctx, $struct, $access, $definition, $direction);
-            }
-            $phpName = str_replace('/', '', $name);
-            return $phpName . "Mapper::{$direction}({$access})";
-        }
-
-        if ($type->isUnion()) {
-            return $access;
-        }
-
-        if ($type->isStringLiteral()) {
-            return "(string) {$access}";
-        }
-
-        if ($type->isAlias()) {
-            $alias = $definition->getTypeAlias($name);
-            $phpType = $alias?->getLangType('php');
-            if ($phpType !== null) {
-                return $this->castExpression($phpType, $access);
-            }
-            $resolvedType = $definition->getTypeAliasResolvedType($name);
-            if ($resolvedType !== null) {
-                return $this->generateCast($ctx, $resolvedType, $access, $definition, $direction);
-            }
-            return $access;
-        }
-
-        if ($type->isSimple()) {
-            $alias = $definition->getTypeAlias($name);
-            $phpType = $alias?->getLangType('php');
-            if ($phpType === null) {
-                throw new GeneratorException(sprintf('No PHP type mapping found for type "%s"', $name));
-            }
-            return $this->castExpression($phpType, $access);
-        }
-
-        return $access;
+        return new PhpMappersCastVisitor(
+            $ctx,
+            $definition,
+            $direction,
+            $access,
+            fn(Struct $struct, string $inlineAccess) => $this->generateInlineCast($ctx, $struct, $inlineAccess, $definition, $direction),
+        );
     }
 
     private function generateInlineCast(PhpMappersContext $ctx, Struct $struct, string $access, Definition $definition, string $direction): string
@@ -203,21 +148,10 @@ class PhpMappersGenerator implements GeneratorInterface
             $writeKey = ($direction === 'fromArray') ? $fromKey : $toKey;
 
             $fieldAccess = $access . "['{$readKey}']";
-            $cast = $this->generateCast($ctx, $prop->getType(), $fieldAccess, $definition, $direction);
+            $cast = $prop->getType()->accept($this->createCastVisitor($ctx, $definition, $direction, $fieldAccess));
             $entries[] = "'{$writeKey}' => {$cast}";
         }
         return '[' . implode(', ', $entries) . ']';
-    }
-
-    private function castExpression(string $typeName, string $access): string
-    {
-        return match ($typeName) {
-            'int' => "(int) {$access}",
-            'float' => "(float) {$access}",
-            'string' => "(string) {$access}",
-            'bool' => "(bool) {$access}",
-            default => $access,
-        };
     }
 
 }

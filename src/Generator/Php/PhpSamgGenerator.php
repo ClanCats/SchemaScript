@@ -2,14 +2,12 @@
 
 namespace ClanCats\SchemaScript\Generator\Php;
 
-use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
 use ClanCats\SchemaScript\Schema\Definition;
 use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
 use ClanCats\SchemaScript\Schema\Struct;
 use ClanCats\SchemaScript\Schema\StructProperty;
-use ClanCats\SchemaScript\Schema\Type;
 
 class PhpSamgGenerator implements GeneratorInterface
 {
@@ -94,7 +92,7 @@ class PhpSamgGenerator implements GeneratorInterface
             $access = "\$array['{$readKey}']";
 
             if ($withCast) {
-                $expr = $this->castExpression($prop->getType(), $access, $definition, $direction);
+                $expr = $prop->getType()->accept(new PhpSamgCastVisitor($definition, $direction, $access));
             } else {
                 $expr = "{$access} ?? null";
             }
@@ -129,10 +127,10 @@ class PhpSamgGenerator implements GeneratorInterface
             if ($withCast) {
                 if ($prop->getType()->isNullable()) {
                     $inner = $prop->getType()->getInnerType();
-                    $innerCast = $inner !== null ? $this->castExpression($inner, $access, $definition, $direction) : $access;
+                    $innerCast = $inner !== null ? $inner->accept(new PhpSamgCastVisitor($definition, $direction, $access)) : $access;
                     $expr = "({$access} === null) ? null : {$innerCast}";
                 } else {
-                    $expr = $this->castExpression($prop->getType(), $access, $definition, $direction);
+                    $expr = $prop->getType()->accept(new PhpSamgCastVisitor($definition, $direction, $access));
                 }
             } else {
                 $expr = $access;
@@ -165,7 +163,7 @@ class PhpSamgGenerator implements GeneratorInterface
             $key = MappingStrategyResolver::resolve($definition,$mapName, $prop->getName(), $prop->getAnnotations());
             $access = "\$array['{$key}']";
 
-            $expr = $this->castExpression($prop->getType(), $access, $definition, 'localToInterface');
+            $expr = $prop->getType()->accept(new PhpSamgCastVisitor($definition, 'localToInterface', $access));
             $lines[] = "        \$array['{$key}'] = {$expr};";
         }
 
@@ -197,66 +195,4 @@ class PhpSamgGenerator implements GeneratorInterface
         return 'interfaceToLocal';
     }
 
-    private function castExpression(Type $type, string $access, Definition $definition, string $direction): string
-    {
-        if ($type->isNullable()) {
-            $inner = $type->getInnerType();
-            if ($inner === null) {
-                return "{$access} ?? null";
-            }
-            $innerCast = $this->castExpression($inner, $access, $definition, $direction);
-            return "(!isset({$access})) ? null : {$innerCast}";
-        }
-
-        if ($type->isArray()) {
-            $inner = $type->getInnerType();
-            if ($inner === null) {
-                return "{$access} ?? []";
-            }
-            if ($inner->isReference()) {
-                $modelName = str_replace('/', '', $inner->getName() ?? '');
-                $mapMethod = $direction === 'localToInterface' ? 'localToInterface' : 'interfaceToLocal';
-                return "array_map(fn(\$v) => {$modelName}Map::{$mapMethod}(\$v), {$access} ?? [])";
-            }
-            $elementCast = $this->castExpression($inner, '$v', $definition, $direction);
-            return "array_map(fn(\$v) => {$elementCast}, {$access} ?? [])";
-        }
-
-        if ($type->isReference()) {
-            $modelName = str_replace('/', '', $type->getName() ?? '');
-            $mapMethod = $direction === 'localToInterface' ? 'localToInterface' : 'interfaceToLocal';
-            return "{$modelName}Map::{$mapMethod}({$access})";
-        }
-
-        if ($type->isSimple()) {
-            $name = $type->getName();
-            return match ($name) {
-                'int' => "(int) ({$access} ?? null)",
-                'float' => "(float) ({$access} ?? null)",
-                'string' => "(string) ({$access} ?? null)",
-                'bool' => "(bool) ({$access} ?? null)",
-                default => "{$access} ?? null",
-            };
-        }
-
-        if ($type->isAlias()) {
-            $alias = $definition->getTypeAlias($type->getName() ?? '');
-            $phpType = $alias?->getLangType('php');
-            if ($phpType !== null) {
-                return match ($phpType) {
-                    'int' => "(int) ({$access} ?? null)",
-                    'float' => "(float) ({$access} ?? null)",
-                    'string' => "(string) ({$access} ?? null)",
-                    'bool' => "(bool) ({$access} ?? null)",
-                    default => "{$access} ?? null",
-                };
-            }
-            $resolvedType = $definition->getTypeAliasResolvedType($type->getName() ?? '');
-            if ($resolvedType !== null) {
-                return $this->castExpression($resolvedType, $access, $definition, $direction);
-            }
-        }
-
-        return "{$access} ?? null";
-    }
 }

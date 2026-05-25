@@ -43,17 +43,10 @@ class PropertyDefinitionParser extends SchemaParser
 
         if ($typeParser->getIndex() < $typeParser->getTokenCount()) {
             $leftover = $typeParser->getTokens()[$typeParser->getIndex()];
-            $e = new \ClanCats\SchemaScript\Exception\ParserException(
-                sprintf(
-                    'Unexpected token "%s" after type expression on line %d, column %d in file %s',
-                    $leftover->getValue(),
-                    $leftover->getLine(),
-                    $leftover->getColumn(),
-                    $leftover->getFilename() ?? 'unknown'
-                )
+            throw $this->errorParsingAt(
+                sprintf('Unexpected token "%s" after type expression', $leftover->getValue()),
+                $leftover
             );
-            $e->setSourceContext($leftover->getLine(), $leftover->getColumn(), $leftover->getFilename(), null, strlen((string) $leftover->getValue()));
-            throw $e;
         }
 
         $this->type = $typeNode;

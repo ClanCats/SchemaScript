@@ -123,6 +123,24 @@ class Type
     }
 
     /**
+     * @template T
+     * @param TypeVisitorInterface<T> $visitor
+     * @return T
+     */
+    public function accept(TypeVisitorInterface $visitor): mixed
+    {
+        return match ($this->kind) {
+            TypeKind::Nullable => $visitor->visitNullable($this->innerType ?? self::simple('mixed')),
+            TypeKind::Array => $visitor->visitArray($this->innerType ?? self::simple('mixed')),
+            TypeKind::Union => $visitor->visitUnion($this->unionTypes),
+            TypeKind::Simple => $visitor->visitSimple($this->name ?? ''),
+            TypeKind::Reference => $visitor->visitReference($this->name ?? ''),
+            TypeKind::Alias => $visitor->visitAlias($this->name ?? ''),
+            TypeKind::StringLiteral => $visitor->visitStringLiteral($this->name ?? ''),
+        };
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
