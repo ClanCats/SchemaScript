@@ -3,6 +3,7 @@
 namespace ClanCats\SchemaScript\CLI;
 
 use ClanCats\SchemaScript\Lexer;
+use ClanCats\SchemaScript\ImportLinker;
 use ClanCats\SchemaScript\Parser\ScopeParser;
 use ClanCats\SchemaScript\Schema\SchemaEvaluator;
 use ClanCats\SchemaScript\Schema\Definition;
@@ -56,7 +57,9 @@ class SchemaFileHelper
         try {
             $namespace = new SchemaNamespace();
             $namespace->importStdlib();
-            return (new SchemaEvaluator($namespace))->evaluate($scope, $code, $filename);
+            $linker = new ImportLinker($namespace);
+            $linked = $linker->link($scope, $code, $filename);
+            return (new SchemaEvaluator())->evaluate($linked->getScope(), $linked->getSourceCodeMap());
         } catch (EvaluatorException $e) {
             if ($e->getSourceCode() === null && $e->getSourceLine() !== null) {
                 $e->setSourceContext(

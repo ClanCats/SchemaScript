@@ -10,6 +10,8 @@ use ClanCats\SchemaScript\Schema\Struct;
 use ClanCats\SchemaScript\Schema\StructProperty;
 use ClanCats\SchemaScript\Schema\MetadataEntry;
 use ClanCats\SchemaScript\Schema\AnnotationCollection;
+use ClanCats\SchemaScript\Schema\NamespaceDefinition;
+use ClanCats\SchemaScript\Schema\NamespaceConstant;
 
 class DefinitionTest extends TestCase
 {
@@ -110,7 +112,10 @@ class DefinitionTest extends TestCase
     public function testGetNamespaceConstants(): void
     {
         $namespaces = [
-            'Config' => ['MAX_SIZE' => 100, 'NAME' => 'test'],
+            'Config' => new NamespaceDefinition('Config', [
+                'MAX_SIZE' => new NamespaceConstant('MAX_SIZE', 100, true),
+                'NAME' => new NamespaceConstant('NAME', 'test', true),
+            ]),
         ];
         $d = new Definition([], [], $namespaces);
         $this->assertSame(['MAX_SIZE' => 100, 'NAME' => 'test'], $d->getNamespaceConstants('Config'));
@@ -120,17 +125,34 @@ class DefinitionTest extends TestCase
     public function testGetNamespaces(): void
     {
         $namespaces = [
-            'Config' => ['A' => 1],
-            'Env' => ['B' => 2],
+            'Config' => new NamespaceDefinition('Config', [
+                'A' => new NamespaceConstant('A', 1, true),
+            ]),
+            'Env' => new NamespaceDefinition('Env', [
+                'B' => new NamespaceConstant('B', 2, true),
+            ]),
         ];
         $d = new Definition([], [], $namespaces);
         $this->assertCount(2, $d->getNamespaces());
     }
 
+    public function testGetNamespace(): void
+    {
+        $ns = new NamespaceDefinition('Config', [
+            'A' => new NamespaceConstant('A', 1, true),
+        ]);
+        $d = new Definition([], [], ['Config' => $ns]);
+        $this->assertSame($ns, $d->getNamespace('Config'));
+        $this->assertNull($d->getNamespace('nonexistent'));
+    }
+
     public function testResolveReference(): void
     {
         $namespaces = [
-            'Config' => ['MAX_SIZE' => 100, 'NAME' => 'test'],
+            'Config' => new NamespaceDefinition('Config', [
+                'MAX_SIZE' => new NamespaceConstant('MAX_SIZE', 100, true),
+                'NAME' => new NamespaceConstant('NAME', 'test', true),
+            ]),
         ];
         $d = new Definition([], [], $namespaces);
         $this->assertSame(100, $d->resolveReference('Config', 'MAX_SIZE'));
@@ -145,7 +167,11 @@ class DefinitionTest extends TestCase
 
     public function testResolveReferenceReturnsNullForMissingConstant(): void
     {
-        $namespaces = ['Config' => ['A' => 1]];
+        $namespaces = [
+            'Config' => new NamespaceDefinition('Config', [
+                'A' => new NamespaceConstant('A', 1, true),
+            ]),
+        ];
         $d = new Definition([], [], $namespaces);
         $this->assertNull($d->resolveReference('Config', 'MISSING'));
     }
@@ -213,9 +239,15 @@ class DefinitionTest extends TestCase
 
     public function testToArrayWithNamespaces(): void
     {
-        $d = new Definition([], [], ['Config' => ['A' => 1]]);
+        $namespaces = [
+            'Config' => new NamespaceDefinition('Config', [
+                'A' => new NamespaceConstant('A', 1, true),
+            ]),
+        ];
+        $d = new Definition([], [], $namespaces);
         $result = $d->toArray();
         $this->assertArrayHasKey('namespaces', $result);
+        $this->assertSame(['Config' => ['A' => 1]], $result['namespaces']);
     }
 
     public function testToArrayWithStructs(): void

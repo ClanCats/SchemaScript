@@ -1,38 +1,59 @@
 <?php
 
-namespace ClanCats\SchemaScript\Schema;
+namespace ClanCats\SchemaScript;
 
 use ClanCats\SchemaScript\Node\ScopeNode;
-use ClanCats\SchemaScript\Lexer;
-use ClanCats\SchemaScript\SchemaNamespace;
 use ClanCats\SchemaScript\Parser\ScopeParser;
+use ClanCats\SchemaScript\Exception\EvaluatorException;
 
-class ImportResolver
+class ImportLinker
 {
-    use EvaluatorErrorTrait;
-
     private const MAX_IMPORT_DEPTH = 50;
 
     private ?SchemaNamespace $schemaNamespace;
+
+    /**
+     * @var array<string, true>
+     */
+    private array $importedFiles = [];
+
+    /**
+     * @var array<string, string>
+     */
+    private array $sourceCodeMap = [];
 
     public function __construct(?SchemaNamespace $schemaNamespace)
     {
         $this->schemaNamespace = $schemaNamespace;
     }
 
+    public function link(ScopeNode $scope, ?string $sourceCode = null, ?string $filename = null): LinkedScope
+    {
+        $this->importedFiles = [];
+        $this->sourceCodeMap = [];
+
+        if ($sourceCode !== null) {
+            $this->sourceCodeMap[$filename ?? ''] = $sourceCode;
+        }
+
+        $this->resolveImports($scope, []);
+
+        return new LinkedScope($scope, $this->sourceCodeMap);
+    }
+
     /**
      * @param array<int, string> $importStack
      */
-    public function processImports(ScopeNode $scope, EvaluationContext $context, array $importStack = []): void
+    private function resolveImports(ScopeNode $scope, array $importStack): void
     {
         foreach ($scope->getImports() as $import) {
             $path = $import->getPath();
 
             if ($this->schemaNamespace === null) {
-                $this->throwEvaluatorError(sprintf(
+                throw new EvaluatorException(sprintf(
                     'Cannot resolve import "%s": no SchemaNamespace provided',
                     $path
-                ), $import, $context);
+                ));
             }
 
             $absPath = $this->schemaNamespace->getPath($path);
@@ -41,31 +62,31 @@ class ImportResolver
                 $idx = array_search($absPath, $importStack, true);
                 $cycle = array_slice($importStack, $idx !== false ? $idx : 0);
                 $cycle[] = $absPath;
-                $this->throwEvaluatorError(sprintf(
+                throw new EvaluatorException(sprintf(
                     'Circular import detected: %s',
                     implode(' -> ', array_map('basename', $cycle))
-                ), $import, $context);
+                ));
             }
 
             if (count($importStack) >= self::MAX_IMPORT_DEPTH) {
-                $this->throwEvaluatorError(sprintf(
+                throw new EvaluatorException(sprintf(
                     'Maximum import depth exceeded (%d). Check for circular imports.',
                     self::MAX_IMPORT_DEPTH
-                ), $import, $context);
+                ));
             }
 
-            if (isset($context->importedFiles[$absPath])) {
+            if (isset($this->importedFiles[$absPath])) {
                 continue;
             }
-            $context->importedFiles[$absPath] = true;
+            $this->importedFiles[$absPath] = true;
 
             $code = $this->schemaNamespace->getCode($path);
-            $context->sourceCodeMap[$path] = $code;
+            $this->sourceCodeMap[$path] = $code;
             $tokens = (new Lexer($code, $path))->tokens();
             /** @var ScopeNode $importedScope */
             $importedScope = (new ScopeParser($tokens))->parse();
 
-            $this->processImports($importedScope, $context, [...$importStack, $absPath]);
+            $this->resolveImports($importedScope, [...$importStack, $absPath]);
             $this->mergeScope($scope, $importedScope);
         }
     }

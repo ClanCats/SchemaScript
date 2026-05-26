@@ -4,6 +4,7 @@ namespace ClanCats\SchemaScript\Tests\Schema;
 
 use PHPUnit\Framework\TestCase;
 use ClanCats\SchemaScript\Lexer;
+use ClanCats\SchemaScript\ImportLinker;
 use ClanCats\SchemaScript\Parser\ScopeParser;
 use ClanCats\SchemaScript\Schema\SchemaEvaluator;
 use ClanCats\SchemaScript\Schema\Definition;
@@ -27,7 +28,8 @@ class SchemaEvaluatorTest extends TestCase
         $code = "import scsc/base\n" . $code;
         $tokens = (new Lexer($code))->tokens();
         $scope = (new ScopeParser($tokens))->parse();
-        return (new SchemaEvaluator($ns))->evaluate($scope);
+        $linked = (new ImportLinker($ns))->link($scope, $code);
+        return (new SchemaEvaluator())->evaluate($linked->getScope(), $linked->getSourceCodeMap());
     }
 
     private function evaluateCodeStrict(string $code): Definition
@@ -101,7 +103,8 @@ Message {
 SCSC;
         $tokens = (new Lexer($code))->tokens();
         $scope = (new ScopeParser($tokens))->parse();
-        return (new SchemaEvaluator($ns))->evaluate($scope);
+        $linked = (new ImportLinker($ns))->link($scope, $code);
+        return (new SchemaEvaluator())->evaluate($linked->getScope(), $linked->getSourceCodeMap());
     }
 
     public function testGlobalMetadata(): void
@@ -140,7 +143,7 @@ SCSC;
         $this->assertSame([
             'camelCase' => 'MappingType::camelCase',
             'snake_case' => 'MappingType::snake_case',
-        ], $namespaces['MappingType']);
+        ], $namespaces['MappingType']->toArray());
     }
 
     public function testResolveReference(): void
@@ -324,14 +327,16 @@ SCSC;
     public function testEvaluatorIsReusable(): void
     {
         $ns = $this->createNamespaceWithStdlib();
-        $evaluator = new SchemaEvaluator($ns);
+        $evaluator = new SchemaEvaluator();
+        $linker = new ImportLinker($ns);
 
-        $def1 = $evaluator->evaluate(
-            (new ScopeParser((new Lexer("import scsc/base\nA {\n  x: int\n}"))->tokens()))->parse()
-        );
-        $def2 = $evaluator->evaluate(
-            (new ScopeParser((new Lexer("import scsc/base\nB {\n  y: string\n}"))->tokens()))->parse()
-        );
+        $scope1 = (new ScopeParser((new Lexer("import scsc/base\nA {\n  x: int\n}"))->tokens()))->parse();
+        $linked1 = $linker->link($scope1);
+        $def1 = $evaluator->evaluate($linked1->getScope(), $linked1->getSourceCodeMap());
+
+        $scope2 = (new ScopeParser((new Lexer("import scsc/base\nB {\n  y: string\n}"))->tokens()))->parse();
+        $linked2 = $linker->link($scope2);
+        $def2 = $evaluator->evaluate($linked2->getScope(), $linked2->getSourceCodeMap());
 
         $this->assertArrayHasKey('A', $def1->getStructs());
         $this->assertArrayNotHasKey('B', $def1->getStructs());
@@ -711,7 +716,8 @@ SCSC;
         $code = file_get_contents(__DIR__ . '/../../integration/SCHEMA.scsc');
         $tokens = (new \ClanCats\SchemaScript\Lexer($code))->tokens();
         $scope = (new \ClanCats\SchemaScript\Parser\ScopeParser($tokens))->parse();
-        $def = (new SchemaEvaluator($ns))->evaluate($scope);
+        $linked = (new ImportLinker($ns))->link($scope, $code);
+        $def = (new SchemaEvaluator())->evaluate($linked->getScope(), $linked->getSourceCodeMap());
 
         $metadata = $def->getMetadata();
         $this->assertCount(4, $metadata);
@@ -723,7 +729,7 @@ SCSC;
 
         $this->assertSame('generate', $metadata[2]->getKey());
         $generate = $metadata[2]->getValue();
-        $this->assertCount(2, $generate);
+        $this->assertCount(3, $generate);
 
         $this->assertSame('php.mappers', $generate[0]->getKey());
         $v1 = $generate[0]->getValue();
@@ -732,8 +738,15 @@ SCSC;
         $this->assertSame('namespace', $v1[1]->getKey());
         $this->assertSame('IntegrationEx\\Mappers\\', $v1[1]->getValue());
 
-        $this->assertSame('ts.types', $generate[1]->getKey());
-        $v2 = $generate[1]->getValue();
+        $this->assertSame('php.samg', $generate[1]->getKey());
+        $v3 = $generate[1]->getValue();
+        $this->assertSame('output', $v3[0]->getKey());
+        $this->assertSame('output/php/SAMG/', $v3[0]->getValue());
+        $this->assertSame('namespace', $v3[1]->getKey());
+        $this->assertSame('IntegrationEx\\SAMG\\', $v3[1]->getValue());
+
+        $this->assertSame('ts.types', $generate[2]->getKey());
+        $v2 = $generate[2]->getValue();
         $this->assertSame('output', $v2[0]->getKey());
         $this->assertSame('output/ts/types/', $v2[0]->getValue());
     }
@@ -927,31 +940,31 @@ SCSC;
     public function testValuelessConstantResolvesToQualifiedName(): void
     {
         $def = $this->evaluateCode("ns Config {\n  const plain\n}");
-        $this->assertSame('Config::plain', $def->getNamespaces()['Config']['plain']);
+        $this->assertSame('Config::plain', $def->getNamespaces()['Config']->getConstantValue('plain'));
     }
 
     public function testConstantWithNumericValue(): void
     {
         $def = $this->evaluateCode("ns Config {\n  const version = 42\n}");
-        $this->assertSame(42, $def->getNamespaces()['Config']['version']);
+        $this->assertSame(42, $def->getNamespaces()['Config']->getConstantValue('version'));
     }
 
     public function testConstantWithStringValue(): void
     {
         $def = $this->evaluateCode("ns Config {\n  const endpoint = \"/api/v2\"\n}");
-        $this->assertSame('/api/v2', $def->getNamespaces()['Config']['endpoint']);
+        $this->assertSame('/api/v2', $def->getNamespaces()['Config']->getConstantValue('endpoint'));
     }
 
     public function testConstantWithIdentifierValue(): void
     {
         $def = $this->evaluateCode("ns Config {\n  const enabled = true\n}");
-        $this->assertSame('true', $def->getNamespaces()['Config']['enabled']);
+        $this->assertSame('true', $def->getNamespaces()['Config']->getConstantValue('enabled'));
     }
 
     public function testConstantWithReferenceValue(): void
     {
         $def = $this->evaluateCode("ns Source {\n  const original = 99\n}\nns Config {\n  const alias = Source::original\n}");
-        $this->assertSame(99, $def->getNamespaces()['Config']['alias']);
+        $this->assertSame(99, $def->getNamespaces()['Config']->getConstantValue('alias'));
     }
 
     public function testValuedConstantReferenceInMetadata(): void
@@ -976,15 +989,15 @@ SCSC;
     {
         $def = $this->evaluateCode("ns Config {\n  const plain\n  const version = 2\n  const name = \"hello\"\n}");
         $ns = $def->getNamespaces()['Config'];
-        $this->assertSame('Config::plain', $ns['plain']);
-        $this->assertSame(2, $ns['version']);
-        $this->assertSame('hello', $ns['name']);
+        $this->assertSame('Config::plain', $ns->getConstantValue('plain'));
+        $this->assertSame(2, $ns->getConstantValue('version'));
+        $this->assertSame('hello', $ns->getConstantValue('name'));
     }
 
     public function testConstantReferenceToValuelessConstantResolvesToQualifiedName(): void
     {
         $def = $this->evaluateCode("ns Source {\n  const symbol\n}\nns Config {\n  const ref = Source::symbol\n}");
-        $this->assertSame('Source::symbol', $def->getNamespaces()['Config']['ref']);
+        $this->assertSame('Source::symbol', $def->getNamespaces()['Config']->getConstantValue('ref'));
     }
 
     public function testTypeConvenienceMethods(): void
@@ -1133,7 +1146,8 @@ SCSC;
 
         $tokens = (new Lexer($code))->tokens();
         $scope = (new ScopeParser($tokens))->parse();
-        return (new SchemaEvaluator($ns))->evaluate($scope);
+        $linked = (new ImportLinker($ns))->link($scope, $code);
+        return (new SchemaEvaluator())->evaluate($linked->getScope(), $linked->getSourceCodeMap());
     }
 
     public function testBasicImport(): void
@@ -1168,7 +1182,9 @@ SCSC;
     {
         $this->expectException(EvaluatorException::class);
         $this->expectExceptionMessage('no SchemaNamespace provided');
-        $this->evaluateCodeStrict("import common\n\nFoo {\n  id: int\n}");
+        $tokens = (new Lexer("import common\n\nFoo {\n  id: int\n}"))->tokens();
+        $scope = (new ScopeParser($tokens))->parse();
+        (new ImportLinker(null))->link($scope);
     }
 
     public function testImportUnknownPathThrows(): void
@@ -1319,9 +1335,9 @@ SCSC;
         $ns = $def->getNamespaces();
         $this->assertArrayHasKey('Visibility', $ns);
         $this->assertArrayHasKey('Visibility::State', $ns);
-        $this->assertSame('Visibility::public', $ns['Visibility']['public']);
-        $this->assertSame('Visibility::State::active', $ns['Visibility::State']['active']);
-        $this->assertSame('Visibility::State::archived', $ns['Visibility::State']['archived']);
+        $this->assertSame('Visibility::public', $ns['Visibility']->getConstantValue('public'));
+        $this->assertSame('Visibility::State::active', $ns['Visibility::State']->getConstantValue('active'));
+        $this->assertSame('Visibility::State::archived', $ns['Visibility::State']->getConstantValue('archived'));
     }
 
     public function testDeeplyNestedNamespace(): void
@@ -1329,7 +1345,7 @@ SCSC;
         $def = $this->evaluateCode("ns A {\n  ns B {\n    ns C {\n      const x\n    }\n  }\n}");
         $ns = $def->getNamespaces();
         $this->assertArrayHasKey('A::B::C', $ns);
-        $this->assertSame('A::B::C::x', $ns['A::B::C']['x']);
+        $this->assertSame('A::B::C::x', $ns['A::B::C']->getConstantValue('x'));
     }
 
     public function testNestedNamespaceOnlyChildrenNoParentEntry(): void
@@ -1343,7 +1359,7 @@ SCSC;
     public function testNestedNamespaceReferenceResolution(): void
     {
         $def = $this->evaluateCode("ns A {\n  ns B {\n    const x = 42\n  }\n}\nns Config {\n  const ref = A::B::x\n}");
-        $this->assertSame(42, $def->getNamespaces()['Config']['ref']);
+        $this->assertSame(42, $def->getNamespaces()['Config']->getConstantValue('ref'));
     }
 
     public function testNestedNamespaceInMetadata(): void

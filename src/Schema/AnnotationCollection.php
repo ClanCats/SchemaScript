@@ -34,6 +34,23 @@ class AnnotationCollection
         return $this->get('lang.' . $lang)?->getFirstArgument();
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function getLangTypes(): array
+    {
+        $langTypes = [];
+        foreach ($this->annotations as $name => $annotation) {
+            if (str_starts_with($name, 'lang.')) {
+                $value = $annotation->getFirstArgument();
+                if (is_string($value)) {
+                    $langTypes[substr($name, 5)] = $value;
+                }
+            }
+        }
+        return $langTypes;
+    }
+
     public function getMapKey(string $mapName): ?string
     {
         return $this->get('map.' . $mapName)?->getFirstArgument();

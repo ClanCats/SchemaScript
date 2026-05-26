@@ -3,7 +3,7 @@
 namespace ClanCats\SchemaScript\Generator\Ts;
 
 use ClanCats\SchemaScript\Exception\GeneratorException;
-use ClanCats\SchemaScript\Schema\Definition;
+use ClanCats\SchemaScript\Schema\ResolvedDefinition;
 use ClanCats\SchemaScript\Schema\Struct;
 use ClanCats\SchemaScript\Schema\Type;
 use ClanCats\SchemaScript\Schema\TypeVisitorInterface;
@@ -20,7 +20,7 @@ class TsTypeResolver implements TypeVisitorInterface
      */
     public function __construct(
         private TsTypesContext $ctx,
-        private Definition $definition,
+        private ResolvedDefinition $resolved,
         private Closure $inlineObjectRenderer,
     ) {}
 
@@ -49,8 +49,8 @@ class TsTypeResolver implements TypeVisitorInterface
 
     public function visitSimple(string $name): string
     {
-        $alias = $this->definition->getTypeAlias($name);
-        $tsType = $alias?->getLangType('ts');
+        $info = $this->resolved->getTypeInfo($name);
+        $tsType = $info?->getLangType('ts');
         if ($tsType === null) {
             throw new GeneratorException(sprintf('No TypeScript type mapping found for type "%s"', $name));
         }
@@ -65,28 +65,27 @@ class TsTypeResolver implements TypeVisitorInterface
             $this->ctx->referencedPubTypes[$tsName] = true;
             return $tsName;
         }
-        $struct = $this->definition->getStruct($name);
+        $struct = $this->resolved->getStruct($name);
         if ($struct !== null && $struct->isInline()) {
             return ($this->inlineObjectRenderer)($struct);
         }
+        $this->ctx->referencedStructs[$name] = true;
         return $name;
     }
 
     public function visitAlias(string $name): string
     {
-        if ($this->definition->isTypeAliasPublic($name)) {
+        if ($this->resolved->isTypeAliasPublic($name)) {
             $tsName = Str::toPascalCase($name);
             $this->ctx->referencedPubTypes[$tsName] = true;
             return $tsName;
         }
-        $alias = $this->definition->getTypeAlias($name);
-        $tsType = $alias?->getLangType('ts');
-        if ($tsType !== null) {
-            return $tsType;
+        $info = $this->resolved->getTypeInfo($name);
+        if ($info !== null && $info->getLangType('ts') !== null) {
+            return $info->getLangType('ts');
         }
-        $resolved = $this->definition->getTypeAliasResolvedType($name);
-        if ($resolved !== null) {
-            return $resolved->accept($this);
+        if ($info !== null && $info->getResolvedType() !== null) {
+            return $info->getResolvedType()->accept($this);
         }
         return $name;
     }

@@ -5,9 +5,8 @@ namespace ClanCats\SchemaScript\Generator\Php;
 use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
 use ClanCats\SchemaScript\Schema\Definition;
-use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
+use ClanCats\SchemaScript\Schema\ResolvedDefinition;
 use ClanCats\SchemaScript\Schema\Struct;
-use ClanCats\SchemaScript\Schema\StructProperty;
 
 class PhpSamgGenerator implements GeneratorInterface
 {
@@ -33,15 +32,17 @@ class PhpSamgGenerator implements GeneratorInterface
         $ctx->mapFrom = $options['map_from'] ?? 'self';
         $ctx->mapTo = $options['map_to'] ?? 'api';
 
-        foreach ($definition->getModels() as $struct) {
-            $code = $this->generateMapClass($ctx, $struct, $definition, $namespace);
+        $resolved = new ResolvedDefinition($definition, [$ctx->mapFrom, $ctx->mapTo]);
+
+        foreach ($resolved->getModels() as $struct) {
+            $code = $this->generateMapClass($ctx, $struct, $resolved, $namespace);
             $result->addFile($struct->getName() . 'Map.php', $code);
         }
 
         return $result;
     }
 
-    private function generateMapClass(PhpSamgContext $ctx, Struct $struct, Definition $definition, ?string $namespace): string
+    private function generateMapClass(PhpSamgContext $ctx, Struct $struct, ResolvedDefinition $resolved, ?string $namespace): string
     {
         $name = str_replace('/', '', $struct->getName());
         $lines = [];
@@ -55,16 +56,16 @@ class PhpSamgGenerator implements GeneratorInterface
         $lines[] = '{';
 
         $methods = [
-            $this->generateFullMapping($ctx, $struct, $definition, 'localToInterface'),
-            $this->generateFullMapping($ctx, $struct, $definition, 'localToInterfaceMapOnly'),
-            $this->generateFullMapping($ctx, $struct, $definition, 'interfaceToLocal'),
-            $this->generateFullMapping($ctx, $struct, $definition, 'interfaceToLocalMapOnly'),
-            $this->generatePartialMapping($ctx, $struct, $definition, 'localToPartialInterface'),
-            $this->generatePartialMapping($ctx, $struct, $definition, 'localToPartialInterfaceMapOnly'),
-            $this->generatePartialMapping($ctx, $struct, $definition, 'interfaceToPartialLocal'),
-            $this->generatePartialMapping($ctx, $struct, $definition, 'interfaceToPartialLocalMapOnly'),
-            $this->generateCastMethod($ctx, $struct, $definition, 'castLocal'),
-            $this->generateCastMethod($ctx, $struct, $definition, 'castInterface'),
+            $this->generateFullMapping($ctx, $struct, $resolved, 'localToInterface'),
+            $this->generateFullMapping($ctx, $struct, $resolved, 'localToInterfaceMapOnly'),
+            $this->generateFullMapping($ctx, $struct, $resolved, 'interfaceToLocal'),
+            $this->generateFullMapping($ctx, $struct, $resolved, 'interfaceToLocalMapOnly'),
+            $this->generatePartialMapping($ctx, $struct, $resolved, 'localToPartialInterface'),
+            $this->generatePartialMapping($ctx, $struct, $resolved, 'localToPartialInterfaceMapOnly'),
+            $this->generatePartialMapping($ctx, $struct, $resolved, 'interfaceToPartialLocal'),
+            $this->generatePartialMapping($ctx, $struct, $resolved, 'interfaceToPartialLocalMapOnly'),
+            $this->generateCastMethod($ctx, $struct, $resolved, 'castLocal'),
+            $this->generateCastMethod($ctx, $struct, $resolved, 'castInterface'),
         ];
 
         $lines[] = implode("\n\n", $methods);
@@ -73,10 +74,12 @@ class PhpSamgGenerator implements GeneratorInterface
         return implode("\n", $lines) . "\n";
     }
 
-    private function generateFullMapping(PhpSamgContext $ctx, Struct $struct, Definition $definition, string $methodName): string
+    private function generateFullMapping(PhpSamgContext $ctx, Struct $struct, ResolvedDefinition $resolved, string $methodName): string
     {
         $direction = $this->resolveDirection($methodName);
         $withCast = !str_ends_with($methodName, 'MapOnly');
+        $mapFrom = $ctx->mapFrom ?? 'self';
+        $mapTo = $ctx->mapTo ?? 'api';
 
         $lines = [];
         $lines[] = "    /**";
@@ -88,11 +91,13 @@ class PhpSamgGenerator implements GeneratorInterface
         $lines[] = '        return [';
 
         foreach ($struct->getProperties() as $prop) {
-            [$readKey, $writeKey] = $this->resolveKeys($ctx, $prop, $definition, $direction);
+            [$readKey, $writeKey] = $resolved->getResolvedReadWriteKeys(
+                $struct->getName(), $prop->getName(), $mapFrom, $mapTo, $direction !== 'localToInterface',
+            );
             $access = "\$array['{$readKey}']";
 
             if ($withCast) {
-                $expr = $prop->getType()->accept(new PhpSamgCastVisitor($definition, $direction, $access));
+                $expr = $prop->getType()->accept(new PhpSamgCastVisitor($resolved, $direction, $access));
             } else {
                 $expr = "{$access} ?? null";
             }
@@ -106,10 +111,12 @@ class PhpSamgGenerator implements GeneratorInterface
         return implode("\n", $lines);
     }
 
-    private function generatePartialMapping(PhpSamgContext $ctx, Struct $struct, Definition $definition, string $methodName): string
+    private function generatePartialMapping(PhpSamgContext $ctx, Struct $struct, ResolvedDefinition $resolved, string $methodName): string
     {
         $direction = $this->resolveDirection($methodName);
         $withCast = !str_ends_with($methodName, 'MapOnly');
+        $mapFrom = $ctx->mapFrom ?? 'self';
+        $mapTo = $ctx->mapTo ?? 'api';
 
         $lines = [];
         $lines[] = "    /**";
@@ -121,16 +128,18 @@ class PhpSamgGenerator implements GeneratorInterface
         $lines[] = '        $buffer = [];';
 
         foreach ($struct->getProperties() as $prop) {
-            [$readKey, $writeKey] = $this->resolveKeys($ctx, $prop, $definition, $direction);
+            [$readKey, $writeKey] = $resolved->getResolvedReadWriteKeys(
+                $struct->getName(), $prop->getName(), $mapFrom, $mapTo, $direction !== 'localToInterface',
+            );
             $access = "\$array['{$readKey}']";
 
             if ($withCast) {
                 if ($prop->getType()->isNullable()) {
                     $inner = $prop->getType()->getInnerType();
-                    $innerCast = $inner !== null ? $inner->accept(new PhpSamgCastVisitor($definition, $direction, $access)) : $access;
+                    $innerCast = $inner !== null ? $inner->accept(new PhpSamgCastVisitor($resolved, $direction, $access)) : $access;
                     $expr = "({$access} === null) ? null : {$innerCast}";
                 } else {
-                    $expr = $prop->getType()->accept(new PhpSamgCastVisitor($definition, $direction, $access));
+                    $expr = $prop->getType()->accept(new PhpSamgCastVisitor($resolved, $direction, $access));
                 }
             } else {
                 $expr = $access;
@@ -147,7 +156,7 @@ class PhpSamgGenerator implements GeneratorInterface
         return implode("\n", $lines);
     }
 
-    private function generateCastMethod(PhpSamgContext $ctx, Struct $struct, Definition $definition, string $methodName): string
+    private function generateCastMethod(PhpSamgContext $ctx, Struct $struct, ResolvedDefinition $resolved, string $methodName): string
     {
         $isLocal = $methodName === 'castLocal';
         $mapName = $isLocal ? ($ctx->mapFrom ?? 'self') : ($ctx->mapTo ?? 'api');
@@ -160,31 +169,16 @@ class PhpSamgGenerator implements GeneratorInterface
         $lines[] = '    {';
 
         foreach ($struct->getProperties() as $prop) {
-            $key = MappingStrategyResolver::resolve($definition,$mapName, $prop->getName(), $prop->getAnnotations());
+            $key = $resolved->getResolvedKey($struct->getName(), $prop->getName(), $mapName);
             $access = "\$array['{$key}']";
 
-            $expr = $prop->getType()->accept(new PhpSamgCastVisitor($definition, 'localToInterface', $access));
+            $expr = $prop->getType()->accept(new PhpSamgCastVisitor($resolved, 'localToInterface', $access));
             $lines[] = "        \$array['{$key}'] = {$expr};";
         }
 
         $lines[] = '    }';
 
         return implode("\n", $lines);
-    }
-
-    /**
-     * @return array{string, string}
-     */
-    private function resolveKeys(PhpSamgContext $ctx, StructProperty $prop, Definition $definition, string $direction): array
-    {
-        $localKey = MappingStrategyResolver::resolve($definition,$ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
-        $interfaceKey = MappingStrategyResolver::resolve($definition,$ctx->mapTo ?? 'api', $prop->getName(), $prop->getAnnotations());
-
-        if ($direction === 'localToInterface') {
-            return [$localKey, $interfaceKey];
-        }
-
-        return [$interfaceKey, $localKey];
     }
 
     private function resolveDirection(string $methodName): string

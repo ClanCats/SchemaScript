@@ -4,15 +4,10 @@ namespace ClanCats\SchemaScript\Tests\Schema;
 
 use PHPUnit\Framework\TestCase;
 use ClanCats\SchemaScript\Schema\TypeScope;
-use ClanCats\SchemaScript\Node\TypeAliasNode;
+use ClanCats\SchemaScript\Schema\TypeScopeEntry;
 
 class TypeScopeTest extends TestCase
 {
-    private function makeTypeAliasNode(string $name): TypeAliasNode
-    {
-        return new TypeAliasNode($name);
-    }
-
     public function testEmptyScope(): void
     {
         $scope = new TypeScope();
@@ -26,9 +21,11 @@ class TypeScopeTest extends TestCase
     public function testRegisterAndResolveTypeAlias(): void
     {
         $scope = new TypeScope();
-        $alias = $this->makeTypeAliasNode('UUID');
-        $scope->registerTypeAlias($alias);
-        $this->assertSame($alias, $scope->resolveType('UUID'));
+        $scope->registerType('UUID', false);
+        $entry = $scope->resolveType('UUID');
+        $this->assertInstanceOf(TypeScopeEntry::class, $entry);
+        $this->assertSame('UUID', $entry->getName());
+        $this->assertFalse($entry->hasTypeDefinition());
         $this->assertNull($scope->resolveType('other'));
     }
 
@@ -43,7 +40,7 @@ class TypeScopeTest extends TestCase
     public function testHasNameWithAlias(): void
     {
         $scope = new TypeScope();
-        $scope->registerTypeAlias($this->makeTypeAliasNode('UUID'));
+        $scope->registerType('UUID', false);
         $this->assertTrue($scope->hasName('UUID'));
         $this->assertFalse($scope->hasName('other'));
     }
@@ -58,11 +55,12 @@ class TypeScopeTest extends TestCase
     public function testParentScopeResolvesTypeAlias(): void
     {
         $parent = new TypeScope();
-        $alias = $this->makeTypeAliasNode('UUID');
-        $parent->registerTypeAlias($alias);
+        $parent->registerType('UUID', false);
 
         $child = new TypeScope($parent);
-        $this->assertSame($alias, $child->resolveType('UUID'));
+        $entry = $child->resolveType('UUID');
+        $this->assertNotNull($entry);
+        $this->assertSame('UUID', $entry->getName());
     }
 
     public function testParentScopeResolvesModelName(): void
@@ -77,21 +75,22 @@ class TypeScopeTest extends TestCase
     public function testChildOverridesParentAlias(): void
     {
         $parent = new TypeScope();
-        $parentAlias = $this->makeTypeAliasNode('ID');
-        $parent->registerTypeAlias($parentAlias);
+        $parent->registerType('ID', false);
 
         $child = new TypeScope($parent);
-        $childAlias = $this->makeTypeAliasNode('ID');
-        $child->registerTypeAlias($childAlias);
+        $child->registerType('ID', true);
 
-        $this->assertSame($childAlias, $child->resolveType('ID'));
-        $this->assertSame($parentAlias, $parent->resolveType('ID'));
+        $childEntry = $child->resolveType('ID');
+        $parentEntry = $parent->resolveType('ID');
+
+        $this->assertTrue($childEntry->hasTypeDefinition());
+        $this->assertFalse($parentEntry->hasTypeDefinition());
     }
 
     public function testParentHasNameFallback(): void
     {
         $parent = new TypeScope();
-        $parent->registerTypeAlias($this->makeTypeAliasNode('UUID'));
+        $parent->registerType('UUID', false);
         $parent->registerModelName('Base');
 
         $child = new TypeScope($parent);
@@ -103,11 +102,10 @@ class TypeScopeTest extends TestCase
     public function testGetLocalTypeAliases(): void
     {
         $parent = new TypeScope();
-        $parent->registerTypeAlias($this->makeTypeAliasNode('ParentAlias'));
+        $parent->registerType('ParentAlias', false);
 
         $child = new TypeScope($parent);
-        $childAlias = $this->makeTypeAliasNode('ChildAlias');
-        $child->registerTypeAlias($childAlias);
+        $child->registerType('ChildAlias', true);
 
         $local = $child->getLocalTypeAliases();
         $this->assertCount(1, $local);

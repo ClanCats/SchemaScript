@@ -2,24 +2,29 @@
 
 namespace ClanCats\SchemaScript\Generator\Php;
 
-use ClanCats\SchemaScript\Schema\Definition;
 use ClanCats\SchemaScript\Schema\Type;
-use ClanCats\SchemaScript\Schema\TypeVisitorInterface;
 
-/**
- * @implements TypeVisitorInterface<string>
- */
-class PhpSamgCastVisitor implements TypeVisitorInterface
+class PhpSamgCastVisitor extends PhpBaseCastVisitor
 {
-    public function __construct(
-        private Definition $definition,
-        private string $direction,
-        private string $access,
-    ) {}
-
-    private function withAccess(string $access): self
+    protected function createWithAccess(string $access): PhpBaseCastVisitor
     {
-        return new self($this->definition, $this->direction, $access);
+        return new self($this->resolved, $this->direction, $access);
+    }
+
+    protected function castPrimitive(string $typeName, string $access): string
+    {
+        return match ($typeName) {
+            'int' => "(int) ({$access} ?? null)",
+            'float' => "(float) ({$access} ?? null)",
+            'string' => "(string) ({$access} ?? null)",
+            'bool' => "(bool) ({$access} ?? null)",
+            default => "{$access} ?? null",
+        };
+    }
+
+    protected function fallbackAccess(): string
+    {
+        return "{$this->access} ?? null";
     }
 
     public function visitNullable(Type $innerType): string
@@ -35,7 +40,7 @@ class PhpSamgCastVisitor implements TypeVisitorInterface
             $mapMethod = $this->resolveMapMethod();
             return "array_map(fn(\$v) => {$modelName}Map::{$mapMethod}(\$v), {$this->access} ?? [])";
         }
-        $elementCast = $elementType->accept($this->withAccess('$v'));
+        $elementCast = $elementType->accept($this->createWithAccess('$v'));
         return "array_map(fn(\$v) => {$elementCast}, {$this->access} ?? [])";
     }
 
@@ -47,11 +52,6 @@ class PhpSamgCastVisitor implements TypeVisitorInterface
         return "{$this->access} ?? null";
     }
 
-    public function visitSimple(string $name): string
-    {
-        return self::primitiveCast($name, $this->access);
-    }
-
     public function visitReference(string $name): string
     {
         $modelName = str_replace('/', '', $name);
@@ -59,38 +59,8 @@ class PhpSamgCastVisitor implements TypeVisitorInterface
         return "{$modelName}Map::{$mapMethod}({$this->access})";
     }
 
-    public function visitAlias(string $name): string
-    {
-        $alias = $this->definition->getTypeAlias($name);
-        $phpType = $alias?->getLangType('php');
-        if ($phpType !== null) {
-            return self::primitiveCast($phpType, $this->access);
-        }
-        $resolvedType = $this->definition->getTypeAliasResolvedType($name);
-        if ($resolvedType !== null) {
-            return $resolvedType->accept($this);
-        }
-        return "{$this->access} ?? null";
-    }
-
-    public function visitStringLiteral(string $value): string
-    {
-        return "(string) ({$this->access} ?? null)";
-    }
-
     private function resolveMapMethod(): string
     {
         return $this->direction === 'localToInterface' ? 'localToInterface' : 'interfaceToLocal';
-    }
-
-    private static function primitiveCast(string $typeName, string $access): string
-    {
-        return match ($typeName) {
-            'int' => "(int) ({$access} ?? null)",
-            'float' => "(float) ({$access} ?? null)",
-            'string' => "(string) ({$access} ?? null)",
-            'bool' => "(bool) ({$access} ?? null)",
-            default => "{$access} ?? null",
-        };
     }
 }

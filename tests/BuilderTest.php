@@ -3,33 +3,28 @@
 namespace ClanCats\SchemaScript;
 
 use PHPUnit\Framework\TestCase;
-use ClanCats\SchemaScript\Generator\GeneratorRegistry;
-use ClanCats\SchemaScript\Generator\Php\PhpMappersGenerator;
-use ClanCats\SchemaScript\Generator\Ts\TsTypesGenerator;
+use ClanCats\SchemaScript\CLI\GeneratorRegistryFactory;
 
 class BuilderTest extends TestCase
 {
     private function createBuilder(): Builder
     {
-        $registry = new GeneratorRegistry();
-        $registry->register(new PhpMappersGenerator());
-        $registry->register(new TsTypesGenerator());
-        return new Builder($registry);
+        return new Builder(GeneratorRegistryFactory::createGeneratorRegistry());
     }
 
-    private function integrationOutputDir(): string
+    private function integrationBaseDir(): string
     {
-        return __DIR__ . '/../integration/output';
+        return __DIR__ . '/../integration';
     }
 
     public function testIntegrationBuild(): void
     {
         $builder = $this->createBuilder();
         $schemaFile = __DIR__ . '/../integration/SCHEMA.scsc';
-        $outputDir = $this->integrationOutputDir();
-        $this->removeDir($outputDir);
+        $baseDir = $this->integrationBaseDir();
+        $this->removeDir($baseDir . '/output');
 
-        $written = $builder->build($schemaFile, $outputDir);
+        $written = $builder->build($schemaFile, $baseDir);
 
         $this->assertArrayHasKey('php.mappers', $written);
         $this->assertNotEmpty($written['php.mappers']);

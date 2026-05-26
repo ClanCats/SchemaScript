@@ -9,14 +9,7 @@ use ClanCats\SchemaScript\Exception\ParserException;
 
 abstract class SchemaParser
 {
-    /**
-     * @var array<T>
-     */
-    protected array $tokens = [];
-
-    protected int $index = 0;
-
-    protected int $tokenCount = 0;
+    protected TokenStream $stream;
 
     protected bool $finished = false;
 
@@ -25,7 +18,7 @@ abstract class SchemaParser
      */
     public function __construct(array $tokens)
     {
-        $this->setTokens($this->prepareTokens($tokens));
+        $this->stream = new TokenStream($this->prepareTokens($tokens));
         $this->prepare();
     }
 
@@ -34,30 +27,21 @@ abstract class SchemaParser
     }
 
     /**
-     * @param array<T> $tokens
-     */
-    protected function setTokens(array $tokens): void
-    {
-        $this->tokens = array_values($tokens);
-        $this->tokenCount = count($this->tokens);
-    }
-
-    /**
      * @return array<T>
      */
     public function getTokens(): array
     {
-        return $this->tokens;
+        return $this->stream->getTokens();
     }
 
     public function getTokenCount(): int
     {
-        return $this->tokenCount;
+        return $this->stream->getTokenCount();
     }
 
     public function getIndex(): int
     {
-        return $this->index;
+        return $this->stream->getIndex();
     }
 
     /**
@@ -76,21 +60,17 @@ abstract class SchemaParser
 
     protected function currentToken(): T
     {
-        if (!isset($this->tokens[$this->index])) {
-            throw $this->errorParsing("Unexpected end of token stream.");
-        }
-
-        return $this->tokens[$this->index];
+        return $this->stream->current();
     }
 
     protected function nextToken(int $i = 1): ?T
     {
-        return $this->tokens[$this->index + $i] ?? null;
+        return $this->stream->peek($i);
     }
 
     protected function skipToken(int $times = 1): void
     {
-        $this->index += $times;
+        $this->stream->skip($times);
     }
 
     /**
@@ -98,15 +78,13 @@ abstract class SchemaParser
      */
     protected function skipTokenOfType(array $types): void
     {
-        while (!$this->parserIsDone() && in_array($this->currentToken()->getType(), $types, true)) {
-            $this->skipToken();
-        }
+        $this->stream->skipOfType($types);
     }
 
     /** @phpstan-impure */
     protected function parserIsDone(): bool
     {
-        return $this->index >= $this->tokenCount;
+        return $this->stream->isDone();
     }
 
     /**
@@ -114,13 +92,7 @@ abstract class SchemaParser
      */
     protected function getRemainingTokens(bool $skip = false): array
     {
-        $tokens = array_slice($this->tokens, $this->index);
-
-        if ($skip) {
-            $this->index = $this->tokenCount;
-        }
-
-        return $tokens;
+        return $this->stream->remaining($skip);
     }
 
     /**
@@ -128,14 +100,7 @@ abstract class SchemaParser
      */
     protected function getTokensUntil(TokenType $type): array
     {
-        $tokens = [];
-
-        while (!$this->parserIsDone() && !$this->currentToken()->isType($type)) {
-            $tokens[] = $this->currentToken();
-            $this->skipToken();
-        }
-
-        return $tokens;
+        return $this->stream->until($type);
     }
 
     /**
@@ -143,43 +108,7 @@ abstract class SchemaParser
      */
     protected function getTokensUntilClosingScope(): array
     {
-        $openToken = $this->currentToken();
-        if ($openToken->isType(TokenType::ScopeOpen)) {
-            $this->skipToken();
-        }
-
-        $tokens = [];
-        $depth = 1;
-
-        while (!$this->parserIsDone()) {
-            $token = $this->currentToken();
-
-            if ($token->isType(TokenType::ScopeOpen)) {
-                $depth++;
-            } elseif ($token->isType(TokenType::ScopeClose)) {
-                $depth--;
-                if ($depth === 0) {
-                    $this->skipToken();
-                    break;
-                }
-            }
-
-            $tokens[] = $token;
-            $this->skipToken();
-        }
-
-        if ($depth !== 0) {
-            $e = new ParserException(sprintf(
-                'Unclosed scope opened on line %d, column %d in file %s',
-                $openToken->getLine(),
-                $openToken->getColumn(),
-                $openToken->getFilename() ?? 'unknown'
-            ));
-            $e->setSourceContext($openToken->getLine(), $openToken->getColumn(), $openToken->getFilename(), null, 1);
-            throw $e;
-        }
-
-        return $tokens;
+        return $this->stream->untilClosingScope();
     }
 
     /**
@@ -189,7 +118,7 @@ abstract class SchemaParser
     protected function parseChild(string $parserClassName, ?array $tokens = null, bool $skip = true): BaseNode
     {
         if ($tokens === null) {
-            $tokens = array_slice($this->tokens, $this->index);
+            $tokens = array_slice($this->stream->getTokens(), $this->stream->getIndex());
         }
 
         /** @var SchemaParser $parser */
@@ -197,7 +126,7 @@ abstract class SchemaParser
         $node = $parser->parse();
 
         if ($skip) {
-            $this->skipToken($parser->getIndex());
+            $this->stream->skip($parser->getIndex());
         }
 
         return $node;
@@ -208,47 +137,23 @@ abstract class SchemaParser
      */
     protected function parseDoubleColonSeparatedIdentifiers(string $firstPart): array
     {
-        $parts = [$firstPart];
-        while (!$this->parserIsDone() && $this->currentToken()->isType(TokenType::DoubleColon)) {
-            $this->skipToken();
-            $parts[] = $this->expectCurrentType(TokenType::Identifier)->getValue();
-            $this->skipToken();
-        }
-        return $parts;
+        return $this->stream->parseDoubleColonSeparatedIdentifiers($firstPart);
     }
 
     protected function expectCurrentType(TokenType $type): T
     {
-        $token = $this->currentToken();
-
-        if (!$token->isType($type)) {
-            throw $this->errorUnexpectedToken($token);
-        }
-
-        return $token;
+        return $this->stream->expectType($type);
     }
 
     protected function errorUnexpectedToken(T $token): ParserException
     {
-        $filename = $token->getFilename() ?? 'unknown';
-        $e = new ParserException(
-            sprintf(
-                'Unexpected token "%s" (%s) on line %d, column %d in file %s',
-                $token->getValue(),
-                $token->getType()->name,
-                $token->getLine(),
-                $token->getColumn(),
-                $filename
-            )
-        );
-        $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, strlen((string) $token->getValue()));
-        return $e;
+        return TokenStream::unexpectedTokenError($token);
     }
 
     protected function errorParsing(string $message): ParserException
     {
-        if (!$this->parserIsDone()) {
-            return $this->errorParsingAt($message, $this->currentToken());
+        if (!$this->stream->isDone()) {
+            return $this->errorParsingAt($message, $this->stream->current());
         }
 
         return new ParserException($message);
@@ -256,12 +161,7 @@ abstract class SchemaParser
 
     protected function errorParsingAt(string $message, T $token): ParserException
     {
-        $filename = $token->getFilename() ?? 'unknown';
-        $e = new ParserException(
-            sprintf('%s on line %d, column %d in file %s', $message, $token->getLine(), $token->getColumn(), $filename)
-        );
-        $e->setSourceContext($token->getLine(), $token->getColumn(), $token->getFilename(), null, strlen((string) $token->getValue()));
-        return $e;
+        return TokenStream::parsingError($message, $token);
     }
 
     protected function capturePosition(BaseNode $node, T $token): void
@@ -280,7 +180,7 @@ abstract class SchemaParser
 
     public function parse(): BaseNode
     {
-        while (!$this->parserIsDone() && !$this->finished) {
+        while (!$this->stream->isDone() && !$this->finished) {
             $this->next();
         }
 

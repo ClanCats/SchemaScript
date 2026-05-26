@@ -18,7 +18,7 @@ trait EvaluatorErrorTrait
                 $node->getSourceLine(),
                 $node->getSourceColumn() ?? 0,
                 $node->getSourceFile(),
-                $context->sourceCodeMap[$node->getSourceFile() ?? ''] ?? null
+                $context->getSourceCode($node->getSourceFile())
             );
         }
         throw $e;

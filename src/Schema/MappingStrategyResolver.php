@@ -50,4 +50,31 @@ class MappingStrategyResolver
             default => $propertyName,
         };
     }
+
+    /**
+     * Resolves the read and write keys for a property based on mapping strategy and direction.
+     *
+     * When the direction indicates reading from the external format (e.g., 'fromArray', 'interfaceToLocal'),
+     * the keys are swapped so that the external key is read and the local key is written.
+     *
+     * @param bool $invert When true, swaps the read/write keys (used for "from external" directions)
+     * @return array{string, string} [readKey, writeKey]
+     */
+    public static function resolveReadWriteKeys(
+        Definition $definition,
+        string $mapFrom,
+        string $mapTo,
+        string $propertyName,
+        AnnotationCollection $annotations,
+        bool $invert,
+    ): array {
+        $fromKey = self::resolve($definition, $mapFrom, $propertyName, $annotations);
+        $toKey = self::resolve($definition, $mapTo, $propertyName, $annotations);
+
+        if ($invert) {
+            return [$toKey, $fromKey];
+        }
+
+        return [$fromKey, $toKey];
+    }
 }

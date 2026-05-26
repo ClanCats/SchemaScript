@@ -6,9 +6,8 @@ use ClanCats\SchemaScript\Exception\GeneratorException;
 use ClanCats\SchemaScript\Generator\GeneratorInterface;
 use ClanCats\SchemaScript\Generator\GeneratorResult;
 use ClanCats\SchemaScript\Schema\Definition;
-use ClanCats\SchemaScript\Schema\MappingStrategyResolver;
+use ClanCats\SchemaScript\Schema\ResolvedDefinition;
 use ClanCats\SchemaScript\Schema\Struct;
-use ClanCats\SchemaScript\Schema\Type;
 use ClanCats\SchemaScript\Workbench\Str;
 
 class PhpMappersGenerator implements GeneratorInterface
@@ -36,34 +35,31 @@ class PhpMappersGenerator implements GeneratorInterface
         $ctx->mapFrom = $options['map_from'] ?? null;
         $ctx->mapTo = $options['map_to'] ?? null;
 
-        foreach ($definition->getPublicTypeAliases() as $aliasName => $aliasData) {
-            $resolved = $aliasData->getResolvedType();
-            if ($resolved instanceof Type && $resolved->isReference()) {
-                $structName = $resolved->getName();
-                if ($structName !== null) {
-                    $mapperName = Str::toPascalCase($aliasName);
-                    $ctx->pubStructToMapper[$structName] = $mapperName;
-                }
-            }
+        $mapFrom = $ctx->mapFrom ?? 'self';
+        $mapTo = $ctx->mapTo ?? 'self';
+        $resolved = new ResolvedDefinition($definition, [$mapFrom, $mapTo]);
+
+        foreach ($resolved->getPublicStructAliasMap() as $structName => $aliasName) {
+            $ctx->pubStructToMapper[$structName] = Str::toPascalCase($aliasName);
         }
 
         foreach ($ctx->pubStructToMapper as $structName => $mapperName) {
-            $struct = $definition->getStruct($structName);
+            $struct = $resolved->getStruct($structName);
             if ($struct !== null) {
-                $code = $this->generateMapper($ctx, $struct, $definition, $namespace, $includeComments, $mapperName);
+                $code = $this->generateMapper($ctx, $struct, $resolved, $namespace, $includeComments, $mapperName);
                 $result->addFile($mapperName . 'Mapper.php', $code);
             }
         }
 
-        foreach ($definition->getModels() as $struct) {
-            $code = $this->generateMapper($ctx, $struct, $definition, $namespace, $includeComments);
+        foreach ($resolved->getModels() as $struct) {
+            $code = $this->generateMapper($ctx, $struct, $resolved, $namespace, $includeComments);
             $result->addFile($struct->getName() . 'Mapper.php', $code);
         }
 
         return $result;
     }
 
-    private function generateMapper(PhpMappersContext $ctx, Struct $struct, Definition $definition, ?string $namespace, bool $includeComments, ?string $nameOverride = null): string
+    private function generateMapper(PhpMappersContext $ctx, Struct $struct, ResolvedDefinition $resolved, ?string $namespace, bool $includeComments, ?string $nameOverride = null): string
     {
         $name = $nameOverride ?? str_replace('/', '', $struct->getName());
         $lines = [];
@@ -75,20 +71,23 @@ class PhpMappersGenerator implements GeneratorInterface
         }
         $lines[] = "class {$name}Mapper";
         $lines[] = '{';
-        $lines[] = $this->generateMethod($ctx, 'fromArray', $struct, $definition, $includeComments);
+        $lines[] = $this->generateMethod($ctx, 'fromArray', $struct, $resolved, $includeComments);
         $lines[] = '';
-        $lines[] = $this->generateMethod($ctx, 'toArray', $struct, $definition, $includeComments);
+        $lines[] = $this->generateMethod($ctx, 'toArray', $struct, $resolved, $includeComments);
         $lines[] = '}';
 
         return implode("\n", $lines) . "\n";
     }
 
-    private function generateMethod(PhpMappersContext $ctx, string $direction, Struct $struct, Definition $definition, bool $includeComments): string
+    private function generateMethod(PhpMappersContext $ctx, string $direction, Struct $struct, ResolvedDefinition $resolved, bool $includeComments): string
     {
         $lines = [];
         $lines[] = "    public static function {$direction}(array \$data): array";
         $lines[] = '    {';
         $lines[] = '        $result = [];';
+
+        $mapFrom = $ctx->mapFrom ?? 'self';
+        $mapTo = $ctx->mapTo ?? 'self';
 
         foreach ($struct->getProperties() as $prop) {
             $lines[] = '';
@@ -98,14 +97,13 @@ class PhpMappersGenerator implements GeneratorInterface
                 }
             }
 
-            $fromKey = MappingStrategyResolver::resolve($definition,$ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
-            $toKey = MappingStrategyResolver::resolve($definition,$ctx->mapTo ?? 'self', $prop->getName(), $prop->getAnnotations());
-            $readKey = ($direction === 'fromArray') ? $toKey : $fromKey;
-            $writeKey = ($direction === 'fromArray') ? $fromKey : $toKey;
+            [$readKey, $writeKey] = $resolved->getResolvedReadWriteKeys(
+                $struct->getName(), $prop->getName(), $mapFrom, $mapTo, $direction === 'fromArray',
+            );
 
             $varAccess = "\$data['{$readKey}']";
             try {
-                $cast = $prop->getType()->accept($this->createCastVisitor($ctx, $definition, $direction, $varAccess));
+                $cast = $prop->getType()->accept($this->createCastVisitor($ctx, $resolved, $direction, $varAccess));
             } catch (GeneratorException $e) {
                 throw (new GeneratorException($e->getMessage(), 0, $e))
                     ->setStructContext($struct->getName(), $prop->getName());
@@ -127,28 +125,30 @@ class PhpMappersGenerator implements GeneratorInterface
         return implode("\n", $lines);
     }
 
-    private function createCastVisitor(PhpMappersContext $ctx, Definition $definition, string $direction, string $access): PhpMappersCastVisitor
+    private function createCastVisitor(PhpMappersContext $ctx, ResolvedDefinition $resolved, string $direction, string $access): PhpMappersCastVisitor
     {
         return new PhpMappersCastVisitor(
             $ctx,
-            $definition,
+            $resolved,
             $direction,
             $access,
-            fn(Struct $struct, string $inlineAccess) => $this->generateInlineCast($ctx, $struct, $inlineAccess, $definition, $direction),
+            fn(Struct $struct, string $inlineAccess) => $this->generateInlineCast($ctx, $struct, $inlineAccess, $resolved, $direction),
         );
     }
 
-    private function generateInlineCast(PhpMappersContext $ctx, Struct $struct, string $access, Definition $definition, string $direction): string
+    private function generateInlineCast(PhpMappersContext $ctx, Struct $struct, string $access, ResolvedDefinition $resolved, string $direction): string
     {
+        $mapFrom = $ctx->mapFrom ?? 'self';
+        $mapTo = $ctx->mapTo ?? 'self';
+
         $entries = [];
         foreach ($struct->getProperties() as $prop) {
-            $fromKey = MappingStrategyResolver::resolve($definition,$ctx->mapFrom ?? 'self', $prop->getName(), $prop->getAnnotations());
-            $toKey = MappingStrategyResolver::resolve($definition,$ctx->mapTo ?? 'self', $prop->getName(), $prop->getAnnotations());
-            $readKey = ($direction === 'fromArray') ? $toKey : $fromKey;
-            $writeKey = ($direction === 'fromArray') ? $fromKey : $toKey;
+            [$readKey, $writeKey] = $resolved->getResolvedReadWriteKeys(
+                $struct->getName(), $prop->getName(), $mapFrom, $mapTo, $direction === 'fromArray',
+            );
 
             $fieldAccess = $access . "['{$readKey}']";
-            $cast = $prop->getType()->accept($this->createCastVisitor($ctx, $definition, $direction, $fieldAccess));
+            $cast = $prop->getType()->accept($this->createCastVisitor($ctx, $resolved, $direction, $fieldAccess));
             $entries[] = "'{$writeKey}' => {$cast}";
         }
         return '[' . implode(', ', $entries) . ']';

@@ -2,8 +2,8 @@
 
 namespace ClanCats\SchemaScript\Generator\Php;
 
-class PhpSamgContext
+use ClanCats\SchemaScript\Generator\GeneratorContext;
+
+class PhpSamgContext extends GeneratorContext
 {
-    public ?string $mapFrom = null;
-    public ?string $mapTo = null;
 }

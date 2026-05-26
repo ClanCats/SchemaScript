@@ -32,8 +32,16 @@ class MetadataEntry
     {
         return [
             'key' => $this->key,
-            'value' => $this->value,
+            'value' => $this->serializeValue($this->value),
             'attributes' => $this->attributes->toArray(),
         ];
+    }
+
+    private function serializeValue(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(fn($item) => $item instanceof self ? $item->toArray() : $this->serializeValue($item), $value);
+        }
+        return $value;
     }
 }

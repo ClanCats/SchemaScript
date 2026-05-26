@@ -2,13 +2,12 @@
 
 namespace ClanCats\SchemaScript\Generator\Php;
 
-class PhpMappersContext
+use ClanCats\SchemaScript\Generator\GeneratorContext;
+
+class PhpMappersContext extends GeneratorContext
 {
     /**
      * @var array<string, string>
      */
     public array $pubStructToMapper = [];
-
-    public ?string $mapFrom = null;
-    public ?string $mapTo = null;
 }

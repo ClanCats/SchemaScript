@@ -2,12 +2,10 @@
 
 namespace ClanCats\SchemaScript\Schema;
 
-use ClanCats\SchemaScript\Node\TypeAliasNode;
-
 class TypeScope
 {
     /**
-     * @var array<string, TypeAliasNode>
+     * @var array<string, TypeScopeEntry>
      */
     private array $typeAliases = [];
 
@@ -23,9 +21,9 @@ class TypeScope
         $this->parent = $parent;
     }
 
-    public function registerTypeAlias(TypeAliasNode $alias): void
+    public function registerType(string $name, bool $hasTypeDefinition): void
     {
-        $this->typeAliases[$alias->getName()] = $alias;
+        $this->typeAliases[$name] = new TypeScopeEntry($name, $hasTypeDefinition);
     }
 
     public function registerModelName(string $name): void
@@ -33,7 +31,7 @@ class TypeScope
         $this->modelNames[$name] = true;
     }
 
-    public function resolveType(string $name): ?TypeAliasNode
+    public function resolveType(string $name): ?TypeScopeEntry
     {
         if (isset($this->typeAliases[$name])) {
             return $this->typeAliases[$name];
@@ -61,7 +59,7 @@ class TypeScope
     }
 
     /**
-     * @return array<string, TypeAliasNode>
+     * @return array<string, TypeScopeEntry>
      */
     public function getLocalTypeAliases(): array
     {

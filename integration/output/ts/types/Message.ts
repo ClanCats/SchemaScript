@@ -1,4 +1,5 @@
 import type { MessageType } from './_types';
+import type { User } from './User';
 
 export interface Message {
   id: bigint;

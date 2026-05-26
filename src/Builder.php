@@ -3,17 +3,17 @@
 namespace ClanCats\SchemaScript;
 
 use ClanCats\SchemaScript\Generator\GeneratorRegistry;
-use ClanCats\SchemaScript\Node\ScopeNode;
-use ClanCats\SchemaScript\Parser\ScopeParser;
-use ClanCats\SchemaScript\Schema\SchemaEvaluator;
+use ClanCats\SchemaScript\Schema\DefinitionValidator;
 
 class Builder
 {
     private GeneratorRegistry $registry;
+    private SchemaCompiler $compiler;
 
-    public function __construct(GeneratorRegistry $registry)
+    public function __construct(GeneratorRegistry $registry, ?SchemaCompiler $compiler = null)
     {
         $this->registry = $registry;
+        $this->compiler = $compiler ?? new SchemaCompiler();
     }
 
     /**
@@ -21,18 +21,13 @@ class Builder
      */
     public function build(string $schemaFile, string $baseDir): array
     {
-        $code = file_get_contents($schemaFile);
-        if ($code === false) {
-            throw new \RuntimeException(sprintf('Could not read schema file: %s', $schemaFile));
-        }
-
         $namespace = new SchemaNamespace();
         $namespace->importStdlib();
 
-        $tokens = (new Lexer($code, $schemaFile))->tokens();
-        /** @var ScopeNode $scope */
-        $scope = (new ScopeParser($tokens))->parse();
-        $definition = (new SchemaEvaluator($namespace))->evaluate($scope, $code, $schemaFile);
+        $definition = $this->compiler->compile($schemaFile, $namespace);
+
+        $validator = new DefinitionValidator();
+        $validator->validate($definition);
 
         $generateConfig = $definition->findMetadataValue('generate');
         if ($generateConfig === null) {

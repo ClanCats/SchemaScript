@@ -91,26 +91,7 @@ class ScscWriter
 
     private function formatType(Type $type): string
     {
-        if ($type->isNullable()) {
-            $inner = $type->getInnerType();
-            return $inner !== null ? $this->formatType($inner) . '?' : 'mixed?';
-        }
-
-        if ($type->isArray()) {
-            $inner = $type->getInnerType();
-            return $inner !== null ? $this->formatType($inner) . '[]' : 'mixed[]';
-        }
-
-        if ($type->isUnion()) {
-            $parts = array_map(fn(Type $t) => $this->formatType($t), $type->getUnionTypes());
-            return implode('|', $parts);
-        }
-
-        if ($type->isStringLiteral()) {
-            return "'" . addslashes($type->getName() ?? '') . "'";
-        }
-
-        return $type->getName() ?? 'mixed';
+        return $type->accept(new ScscTypeStringVisitor());
     }
 
     private function formatMetadataValue(mixed $value): string

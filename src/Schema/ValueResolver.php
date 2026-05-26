@@ -65,14 +65,14 @@ class ValueResolver
         if ($node instanceof ValueNode) {
             if ($node->getType() === ValueNode::TYPE_IDENTIFIER) {
                 $name = (string) $node->getValue();
-                if (isset($context->valueConstants[$name])) {
-                    $constValue = $context->valueConstants[$name]->getValue();
+                if ($context->hasValueConstant($name)) {
+                    $constValue = $context->getValueConstant($name)->getValue();
                     if ($constValue !== null) {
                         return $this->resolveValue($constValue, $context);
                     }
                 }
-                if (isset($context->identifierConstants[$name])) {
-                    return $context->identifierConstants[$name];
+                if ($context->hasIdentifierConstant($name)) {
+                    return $context->getIdentifierConstant($name);
                 }
             }
             return $node->getValue();
@@ -82,22 +82,22 @@ class ValueResolver
             $const = $node->getConstant();
             $refKey = $ns . '::' . $const;
 
-            if (isset($context->resolvingRefs[$refKey])) {
+            if ($context->isResolvingRef($refKey)) {
                 $this->throwEvaluatorError(sprintf('Circular constant reference detected: "%s"', $refKey), $node, $context);
             }
 
-            if (!isset($context->namespaces[$ns])) {
+            if (!$context->hasNamespace($ns)) {
                 $this->throwEvaluatorError(sprintf('Unknown namespace "%s" in reference "%s::%s"', $ns, $ns, $const), $node, $context);
             }
-            if (!isset($context->namespaces[$ns][$const])) {
+            if (!$context->hasNamespaceConstant($ns, $const)) {
                 $this->throwEvaluatorError(sprintf('Unknown constant "%s" in namespace "%s"', $const, $ns), $node, $context);
             }
 
-            $context->resolvingRefs[$refKey] = true;
+            $context->pushResolvingRef($refKey);
             try {
-                $value = $context->namespaces[$ns][$const];
+                $value = $context->getNamespaceConstant($ns, $const);
             } finally {
-                unset($context->resolvingRefs[$refKey]);
+                $context->popResolvingRef($refKey);
             }
             return $value;
         }

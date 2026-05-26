@@ -18,6 +18,12 @@ import scsc/base
     map_from = self
     map_to = api
   }
+  [php.samg] = {
+    output = 'output/php/SAMG/'
+    namespace = 'IntegrationEx\\SAMG\\'
+    map_from = self
+    map_to = api
+  }
   [ts.types] = {
     output = 'output/ts/types/'
     include_comments = true
@@ -26,6 +32,7 @@ import scsc/base
 }
 
 const pk_t = uint64
+
 
 User {
     id: pk_t
@@ -57,6 +64,7 @@ Box {
   pub MessageType = 'text'|'image'|'video'
 }
 
+// @used(public_api)
 Message {
 
   id: pk_t

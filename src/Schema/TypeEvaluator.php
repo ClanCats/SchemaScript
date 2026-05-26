@@ -30,24 +30,7 @@ class TypeEvaluator
         }
 
         if ($node instanceof SimpleTypeNode) {
-            $name = $node->getName();
-
-            if ($scope->isModelName($name)) {
-                return Type::reference($name);
-            }
-
-            $alias = $scope->resolveType($name);
-            if ($alias !== null) {
-                if ($alias->getTypeDefinition() === null) {
-                    return Type::simple($name);
-                }
-                return Type::alias($name);
-            }
-
-            $this->throwEvaluatorError(sprintf(
-                'Unknown type "%s". Did you forget to import it or define it in [type]?',
-                $name
-            ), $node, $context);
+            return $this->evaluateSimpleType($node, $scope, $context);
         }
 
         if ($node instanceof ArrayTypeNode) {
@@ -59,34 +42,66 @@ class TypeEvaluator
         }
 
         if ($node instanceof UnionTypeNode) {
-            $types = [];
-            foreach ($node->getTypes() as $t) {
-                $types[] = $this->evaluateType($t, $nameContext, $scope, $context);
-            }
-            return Type::union($types);
+            return $this->evaluateUnionType($node, $nameContext, $scope, $context);
         }
 
         if ($node instanceof InlineObjectTypeNode) {
-            $structName = $node->hasExplicitName()
-                ? (string) $node->getExplicitName()
-                : $nameContext;
-
-            if (isset($context->structs[$structName])) {
-                $this->throwEvaluatorError(sprintf(
-                    'Inline object struct name collision: "%s" is already defined as a struct',
-                    $structName
-                ), $node, $context);
-            }
-
-            $metadata = $this->valueResolver->evaluateMetadata($node->getMetadata(), $context);
-            $properties = $this->evaluateProperties($node->getProperties(), $structName, $scope, $context);
-
-            $context->structs[$structName] = new Struct($structName, true, $properties, $metadata);
-
-            return Type::reference($structName);
+            return $this->evaluateInlineObjectType($node, $nameContext, $scope, $context);
         }
 
         $this->throwEvaluatorError('Unknown type node: ' . get_class($node), $node, $context);
+    }
+
+    private function evaluateSimpleType(SimpleTypeNode $node, TypeScope $scope, EvaluationContext $context): Type
+    {
+        $name = $node->getName();
+
+        if ($scope->isModelName($name)) {
+            return Type::reference($name);
+        }
+
+        $entry = $scope->resolveType($name);
+        if ($entry !== null) {
+            if (!$entry->hasTypeDefinition()) {
+                return Type::simple($name);
+            }
+            return Type::alias($name);
+        }
+
+        $this->throwEvaluatorError(sprintf(
+            'Unknown type "%s". Did you forget to import it or define it in [type]?',
+            $name
+        ), $node, $context);
+    }
+
+    private function evaluateUnionType(UnionTypeNode $node, string $nameContext, TypeScope $scope, EvaluationContext $context): Type
+    {
+        $types = [];
+        foreach ($node->getTypes() as $t) {
+            $types[] = $this->evaluateType($t, $nameContext, $scope, $context);
+        }
+        return Type::union($types);
+    }
+
+    private function evaluateInlineObjectType(InlineObjectTypeNode $node, string $nameContext, TypeScope $scope, EvaluationContext $context): Type
+    {
+        $structName = $node->hasExplicitName()
+            ? (string) $node->getExplicitName()
+            : $nameContext;
+
+        if ($context->hasStruct($structName)) {
+            $this->throwEvaluatorError(sprintf(
+                'Inline object struct name collision: "%s" is already defined as a struct',
+                $structName
+            ), $node, $context);
+        }
+
+        $metadata = $this->valueResolver->evaluateMetadata($node->getMetadata(), $context);
+        $properties = $this->evaluateProperties($node->getProperties(), $structName, $scope, $context);
+
+        $context->registerStruct($structName, new Struct($structName, true, $properties, $metadata));
+
+        return Type::reference($structName);
     }
 
     /**
@@ -115,8 +130,8 @@ class TypeEvaluator
     private function evaluateProperty(PropertyNode $node, string $namePrefix, TypeScope $scope, EvaluationContext $context): StructProperty
     {
         $name = $node->getName();
-        if (isset($context->identifierConstants[$name])) {
-            $name = $context->identifierConstants[$name];
+        if ($context->hasIdentifierConstant($name)) {
+            $name = $context->getIdentifierConstant($name);
         }
 
         $annotations = $this->valueResolver->evaluateAnnotations($node->getAnnotations(), $context);

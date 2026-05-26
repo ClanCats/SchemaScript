@@ -15,7 +15,7 @@ class Definition
     protected array $typeAliases;
 
     /**
-     * @var array<string, array<string, mixed>>
+     * @var array<string, NamespaceDefinition>
      */
     protected array $namespaces;
 
@@ -27,7 +27,7 @@ class Definition
     /**
      * @param array<MetadataEntry> $metadata
      * @param array<string, TypeAlias> $typeAliases
-     * @param array<string, array<string, mixed>> $namespaces
+     * @param array<string, NamespaceDefinition> $namespaces
      * @param array<string, Struct> $structs
      */
     public function __construct(array $metadata = [], array $typeAliases = [], array $namespaces = [], array $structs = [])
@@ -73,6 +73,27 @@ class Definition
         return array_filter($this->typeAliases, fn(TypeAlias $a) => $a->isPublic());
     }
 
+    /**
+     * Returns a map of struct name => alias name for all public type aliases
+     * that resolve to a struct reference.
+     *
+     * @return array<string, string>
+     */
+    public function getPublicStructAliasMap(): array
+    {
+        $map = [];
+        foreach ($this->getPublicTypeAliases() as $aliasName => $aliasData) {
+            $resolved = $aliasData->getResolvedType();
+            if ($resolved instanceof Type && $resolved->isReference()) {
+                $structName = $resolved->getName();
+                if ($structName !== null) {
+                    $map[$structName] = $aliasName;
+                }
+            }
+        }
+        return $map;
+    }
+
     public function getTypeAliasResolvedType(string $name): ?Type
     {
         $alias = $this->typeAliases[$name] ?? null;
@@ -80,11 +101,16 @@ class Definition
     }
 
     /**
-     * @return array<string, array<string, mixed>>
+     * @return array<string, NamespaceDefinition>
      */
     public function getNamespaces(): array
     {
         return $this->namespaces;
+    }
+
+    public function getNamespace(string $name): ?NamespaceDefinition
+    {
+        return $this->namespaces[$name] ?? null;
     }
 
     /**
@@ -92,7 +118,8 @@ class Definition
      */
     public function getNamespaceConstants(string $name): ?array
     {
-        return $this->namespaces[$name] ?? null;
+        $ns = $this->namespaces[$name] ?? null;
+        return $ns !== null ? $ns->toArray() : null;
     }
 
     /**
@@ -140,17 +167,14 @@ class Definition
     /**
      * @return mixed
      */
-    public function resolveReference(string $namespace, string $constant)
+    public function resolveReference(string $namespace, string $constant): mixed
     {
-        if (!isset($this->namespaces[$namespace])) {
+        $ns = $this->namespaces[$namespace] ?? null;
+        if ($ns === null || !$ns->hasConstant($constant)) {
             return null;
         }
 
-        if (!isset($this->namespaces[$namespace][$constant])) {
-            return null;
-        }
-
-        return $this->namespaces[$namespace][$constant];
+        return $ns->getConstantValue($constant);
     }
 
     /**
@@ -169,7 +193,7 @@ class Definition
         }
 
         if ($this->namespaces) {
-            $data['namespaces'] = $this->namespaces;
+            $data['namespaces'] = array_map(fn(NamespaceDefinition $ns) => $ns->toArray(), $this->namespaces);
         }
 
         if ($this->structs) {
