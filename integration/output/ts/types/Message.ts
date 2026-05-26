@@ -7,6 +7,7 @@ export interface Message {
   text: string | null;
   actor: User | null;
   unseen?: boolean;
+  payload: Record<string, string>;
   created_at: number;
   modified_at: number;
 }

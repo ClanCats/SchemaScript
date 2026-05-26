@@ -16,6 +16,7 @@ class MessageMap
             'text' => (!isset($array['text'])) ? null : (string) ($array['text'] ?? null),
             'actor' => (!isset($array['actor'])) ? null : UserMap::localToInterface($array['actor']),
             'unseen' => (bool) ($array['unseen'] ?? null),
+            'payload' => array_map(fn($v) => (string) ($v ?? null), $array['payload'] ?? []),
             'created_at' => (int) ($array['createdAt'] ?? null),
             'modified_at' => (int) ($array['updatedAt'] ?? null),
         ];
@@ -33,6 +34,7 @@ class MessageMap
             'text' => $array['text'] ?? null,
             'actor' => $array['actor'] ?? null,
             'unseen' => $array['unseen'] ?? null,
+            'payload' => $array['payload'] ?? null,
             'created_at' => $array['createdAt'] ?? null,
             'modified_at' => $array['updatedAt'] ?? null,
         ];
@@ -50,6 +52,7 @@ class MessageMap
             'text' => (!isset($array['text'])) ? null : (string) ($array['text'] ?? null),
             'actor' => (!isset($array['actor'])) ? null : UserMap::interfaceToLocal($array['actor']),
             'unseen' => (bool) ($array['unseen'] ?? null),
+            'payload' => array_map(fn($v) => (string) ($v ?? null), $array['payload'] ?? []),
             'createdAt' => (int) ($array['created_at'] ?? null),
             'updatedAt' => (int) ($array['modified_at'] ?? null),
         ];
@@ -67,6 +70,7 @@ class MessageMap
             'text' => $array['text'] ?? null,
             'actor' => $array['actor'] ?? null,
             'unseen' => $array['unseen'] ?? null,
+            'payload' => $array['payload'] ?? null,
             'createdAt' => $array['created_at'] ?? null,
             'updatedAt' => $array['modified_at'] ?? null,
         ];
@@ -93,6 +97,9 @@ class MessageMap
         }
         if (array_key_exists('unseen', $array)) {
             $buffer['unseen'] = (bool) ($array['unseen'] ?? null);
+        }
+        if (array_key_exists('payload', $array)) {
+            $buffer['payload'] = array_map(fn($v) => (string) ($v ?? null), $array['payload'] ?? []);
         }
         if (array_key_exists('createdAt', $array)) {
             $buffer['created_at'] = (int) ($array['createdAt'] ?? null);
@@ -125,6 +132,9 @@ class MessageMap
         if (array_key_exists('unseen', $array)) {
             $buffer['unseen'] = $array['unseen'];
         }
+        if (array_key_exists('payload', $array)) {
+            $buffer['payload'] = $array['payload'];
+        }
         if (array_key_exists('createdAt', $array)) {
             $buffer['created_at'] = $array['createdAt'];
         }
@@ -155,6 +165,9 @@ class MessageMap
         }
         if (array_key_exists('unseen', $array)) {
             $buffer['unseen'] = (bool) ($array['unseen'] ?? null);
+        }
+        if (array_key_exists('payload', $array)) {
+            $buffer['payload'] = array_map(fn($v) => (string) ($v ?? null), $array['payload'] ?? []);
         }
         if (array_key_exists('created_at', $array)) {
             $buffer['createdAt'] = (int) ($array['created_at'] ?? null);
@@ -187,6 +200,9 @@ class MessageMap
         if (array_key_exists('unseen', $array)) {
             $buffer['unseen'] = $array['unseen'];
         }
+        if (array_key_exists('payload', $array)) {
+            $buffer['payload'] = $array['payload'];
+        }
         if (array_key_exists('created_at', $array)) {
             $buffer['createdAt'] = $array['created_at'];
         }
@@ -206,6 +222,7 @@ class MessageMap
         $array['text'] = (!isset($array['text'])) ? null : (string) ($array['text'] ?? null);
         $array['actor'] = (!isset($array['actor'])) ? null : UserMap::localToInterface($array['actor']);
         $array['unseen'] = (bool) ($array['unseen'] ?? null);
+        $array['payload'] = array_map(fn($v) => (string) ($v ?? null), $array['payload'] ?? []);
         $array['createdAt'] = (int) ($array['createdAt'] ?? null);
         $array['updatedAt'] = (int) ($array['updatedAt'] ?? null);
     }
@@ -220,6 +237,7 @@ class MessageMap
         $array['text'] = (!isset($array['text'])) ? null : (string) ($array['text'] ?? null);
         $array['actor'] = (!isset($array['actor'])) ? null : UserMap::localToInterface($array['actor']);
         $array['unseen'] = (bool) ($array['unseen'] ?? null);
+        $array['payload'] = array_map(fn($v) => (string) ($v ?? null), $array['payload'] ?? []);
         $array['created_at'] = (int) ($array['created_at'] ?? null);
         $array['modified_at'] = (int) ($array['modified_at'] ?? null);
     }

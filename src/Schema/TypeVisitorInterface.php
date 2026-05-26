@@ -42,4 +42,15 @@ interface TypeVisitorInterface
      * @return T
      */
     public function visitStringLiteral(string $value): mixed;
+
+    /**
+     * @return T
+     */
+    public function visitTypeParameter(string $name): mixed;
+
+    /**
+     * @param array<Type> $typeArguments
+     * @return T
+     */
+    public function visitGeneric(string $baseName, array $typeArguments): mixed;
 }

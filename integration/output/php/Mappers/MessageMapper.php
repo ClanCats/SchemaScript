@@ -20,6 +20,8 @@ class MessageMapper
             $result['unseen'] = (bool) $data['unseen'];
         }
 
+        $result['payload'] = array_map(fn($v) => (string) $v, $data['payload']);
+
         $result['createdAt'] = (int) $data['created_at'];
 
         $result['updatedAt'] = (int) $data['modified_at'];
@@ -42,6 +44,8 @@ class MessageMapper
         if (array_key_exists('unseen', $data)) {
             $result['unseen'] = (bool) $data['unseen'];
         }
+
+        $result['payload'] = array_map(fn($v) => (string) $v, $data['payload']);
 
         $result['created_at'] = (int) $data['createdAt'];
 

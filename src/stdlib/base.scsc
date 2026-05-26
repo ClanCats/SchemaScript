@@ -159,3 +159,7 @@ ns MappingStrategy {
   @lang.ts(SCSC::Lang::TS::Type::unknown)
   mixed
 }
+
+@lang.php(SCSC::Lang::PHP::Type::array)
+@lang.ts('Record')
+map<K, V> {}

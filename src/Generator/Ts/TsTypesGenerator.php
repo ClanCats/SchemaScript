@@ -51,6 +51,9 @@ class TsTypesGenerator implements GeneratorInterface
         }
 
         foreach ($resolved->getModels() as $struct) {
+            if ($struct->isGeneric() && $struct->hasAnnotation('lang.ts')) {
+                continue;
+            }
             $ctx->resetReferencedPubTypes();
             $interfaceCode = $this->generateInterface($ctx, $struct, $resolved, $includeComments);
 
@@ -127,7 +130,11 @@ class TsTypesGenerator implements GeneratorInterface
     private function generateInterface(TsTypesContext $ctx, Struct $struct, ResolvedDefinition $resolved, bool $includeComments): string
     {
         $lines = [];
-        $lines[] = 'export interface ' . $struct->getName() . ' {';
+        $typeParamSuffix = '';
+        if ($struct->isGeneric()) {
+            $typeParamSuffix = '<' . implode(', ', $struct->getTypeParameters()) . '>';
+        }
+        $lines[] = 'export interface ' . $struct->getName() . $typeParamSuffix . ' {';
         $ctx->currentStructName = $struct->getName();
 
         foreach ($struct->getProperties() as $prop) {

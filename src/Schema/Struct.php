@@ -21,16 +21,26 @@ class Struct
     protected AnnotationCollection $annotations;
 
     /**
+     * @var array<string>
+     */
+    protected array $typeParameters;
+
+    protected bool $isPrivate;
+
+    /**
      * @param array<StructProperty> $properties
      * @param array<MetadataEntry> $metadata
+     * @param array<string> $typeParameters
      */
-    public function __construct(string $name, bool $isInline, array $properties = [], array $metadata = [], AnnotationCollection $annotations = new AnnotationCollection())
+    public function __construct(string $name, bool $isInline, array $properties = [], array $metadata = [], AnnotationCollection $annotations = new AnnotationCollection(), array $typeParameters = [], bool $isPrivate = false)
     {
         $this->name = $name;
         $this->isInline = $isInline;
         $this->properties = $properties;
         $this->metadata = $metadata;
         $this->annotations = $annotations;
+        $this->typeParameters = $typeParameters;
+        $this->isPrivate = $isPrivate;
     }
 
     public function getName(): string
@@ -62,6 +72,24 @@ class Struct
     public function getAnnotations(): AnnotationCollection
     {
         return $this->annotations;
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getTypeParameters(): array
+    {
+        return $this->typeParameters;
+    }
+
+    public function isPrivate(): bool
+    {
+        return $this->isPrivate;
+    }
+
+    public function isGeneric(): bool
+    {
+        return !empty($this->typeParameters);
     }
 
     public function hasAnnotation(string $name): bool
@@ -99,6 +127,14 @@ class Struct
 
         if ($this->isInline) {
             $data['inline'] = true;
+        }
+
+        if ($this->isPrivate) {
+            $data['private'] = true;
+        }
+
+        if ($this->typeParameters) {
+            $data['typeParameters'] = $this->typeParameters;
         }
 
         if ($this->metadata) {

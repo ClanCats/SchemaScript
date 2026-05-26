@@ -31,6 +31,18 @@ class ModelDefinitionNode extends BaseNode
      */
     protected array $annotations = [];
 
+    /**
+     * @var array<string>
+     */
+    protected array $typeParameters = [];
+
+    /**
+     * @var array<\ClanCats\SchemaScript\Node\Type\TypeNode>
+     */
+    protected array $parentTypes = [];
+
+    protected bool $isPrivate = false;
+
     public function __construct(string $name = '')
     {
         $this->name = $name;
@@ -112,6 +124,48 @@ class ModelDefinitionNode extends BaseNode
     public function setAnnotations(array $annotations): void
     {
         $this->annotations = $annotations;
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getTypeParameters(): array
+    {
+        return $this->typeParameters;
+    }
+
+    /**
+     * @param array<string> $typeParameters
+     */
+    public function setTypeParameters(array $typeParameters): void
+    {
+        $this->typeParameters = $typeParameters;
+    }
+
+    /**
+     * @return array<\ClanCats\SchemaScript\Node\Type\TypeNode>
+     */
+    public function getParentTypes(): array
+    {
+        return $this->parentTypes;
+    }
+
+    /**
+     * @param array<\ClanCats\SchemaScript\Node\Type\TypeNode> $parentTypes
+     */
+    public function setParentTypes(array $parentTypes): void
+    {
+        $this->parentTypes = $parentTypes;
+    }
+
+    public function isPrivate(): bool
+    {
+        return $this->isPrivate;
+    }
+
+    public function setPrivate(bool $isPrivate): void
+    {
+        $this->isPrivate = $isPrivate;
     }
 
     public function accept(NodeVisitorInterface $visitor): void

@@ -33,11 +33,33 @@ import scsc/base
 
 const pk_t = uint64
 
+private PaginationMeta {
+    total_count: int
+    filtered_count: int
+}
+
+private SingleResponse<T> {
+    error?: string
+    data: T
+}
+
+private CollectionResponse<T>: PaginationMeta {
+    error?: string
+    data: T[]
+}
 
 User {
     id: pk_t
     name: string
 }
+
+UserResponse: SingleResponse<User> {
+
+}
+UserCollectionResponse: CollectionResponse<User> {
+
+}
+
 
 [type] = {
     position = {
@@ -72,6 +94,8 @@ Message {
   text: string?
   actor: User?
   unseen?: bool
+
+  payload: map<string, string>
   
   createdAt: int 
 

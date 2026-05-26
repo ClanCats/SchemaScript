@@ -11,6 +11,7 @@ use ClanCats\SchemaScript\Node\Type\NullableTypeNode;
 use ClanCats\SchemaScript\Node\Type\UnionTypeNode;
 use ClanCats\SchemaScript\Node\Type\InlineObjectTypeNode;
 use ClanCats\SchemaScript\Node\Type\StringLiteralTypeNode;
+use ClanCats\SchemaScript\Node\Type\GenericTypeNode;
 
 class TypeEvaluator
 {
@@ -49,6 +50,10 @@ class TypeEvaluator
             return $this->evaluateInlineObjectType($node, $nameContext, $scope, $context);
         }
 
+        if ($node instanceof GenericTypeNode) {
+            return $this->evaluateGenericType($node, $nameContext, $scope, $context);
+        }
+
         $this->throwEvaluatorError('Unknown type node: ' . get_class($node), $node, $context);
     }
 
@@ -56,11 +61,15 @@ class TypeEvaluator
     {
         $name = $node->getName();
 
+        $entry = $scope->resolveType($name);
+        if ($entry !== null && $entry->isTypeParameter()) {
+            return Type::typeParameter($name);
+        }
+
         if ($scope->isModelName($name)) {
             return Type::reference($name);
         }
 
-        $entry = $scope->resolveType($name);
         if ($entry !== null) {
             if (!$entry->hasTypeDefinition()) {
                 return Type::simple($name);
@@ -102,6 +111,17 @@ class TypeEvaluator
         $context->registerStruct($structName, new Struct($structName, true, $properties, $metadata));
 
         return Type::reference($structName);
+    }
+
+    private function evaluateGenericType(GenericTypeNode $node, string $nameContext, TypeScope $scope, EvaluationContext $context): Type
+    {
+        $baseName = $node->getName();
+        $typeArguments = [];
+        foreach ($node->getArguments() as $argNode) {
+            $typeArguments[] = $this->evaluateType($argNode, $nameContext, $scope, $context);
+        }
+
+        return Type::generic($baseName, $typeArguments);
     }
 
     /**

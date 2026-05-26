@@ -52,6 +52,9 @@ class PhpMappersGenerator implements GeneratorInterface
         }
 
         foreach ($resolved->getModels() as $struct) {
+            if ($struct->isGeneric()) {
+                continue;
+            }
             $code = $this->generateMapper($ctx, $struct, $resolved, $namespace, $includeComments);
             $result->addFile($struct->getName() . 'Mapper.php', $code);
         }

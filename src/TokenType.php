@@ -28,4 +28,7 @@ enum TokenType: int
     case KeywordImport = 21;
     case Slash = 22;
     case KeywordPub = 23;
+    case AngleOpen = 24;
+    case AngleClose = 25;
+    case KeywordPrivate = 26;
 }

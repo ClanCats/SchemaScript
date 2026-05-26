@@ -46,6 +46,7 @@ class Lexer
         "/\\Gconst(?=[\\s\\n])/" => TokenType::KeywordConst,
         "/\\Gimport(?=[\\s\\n])/" => TokenType::KeywordImport,
         "/\\Gpub(?=[\\s\\n])/" => TokenType::KeywordPub,
+        "/\\Gprivate(?=[\\s\\n])/" => TokenType::KeywordPrivate,
 
         // multi-char symbols
         "/\\G\\[\\]/" => TokenType::ArraySuffix,
@@ -62,6 +63,8 @@ class Lexer
         "/\\G\\|/" => TokenType::Pipe,
         "/\\G,/" => TokenType::Comma,
         "/\\G\\//" => TokenType::Slash,
+        "/\\G</" => TokenType::AngleOpen,
+        "/\\G>/" => TokenType::AngleClose,
 
         // identifiers (must be last)
         "/\\G[\\w]+/" => TokenType::Identifier,

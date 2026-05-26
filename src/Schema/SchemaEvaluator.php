@@ -7,6 +7,8 @@ use ClanCats\SchemaScript\Node\ModelDefinitionNode;
 use ClanCats\SchemaScript\Node\ValueNode;
 use ClanCats\SchemaScript\Node\TypeAliasNode;
 use ClanCats\SchemaScript\Node\NamespaceNode;
+use ClanCats\SchemaScript\Node\Type\SimpleTypeNode;
+use ClanCats\SchemaScript\Node\Type\GenericTypeNode;
 
 class SchemaEvaluator
 {
@@ -67,7 +69,8 @@ class SchemaEvaluator
             );
         }
 
-        foreach ($scope->getModels() as $model) {
+        $sortedModels = $this->topologicalSortModels($scope->getModels(), $context);
+        foreach ($sortedModels as $model) {
             $this->evaluateModel($model, $rootScope, '', $context);
         }
 
@@ -230,10 +233,21 @@ class SchemaEvaluator
     private function evaluateModel(ModelDefinitionNode $model, TypeScope $parentScope, string $namePrefix, EvaluationContext $context): void
     {
         $name = $namePrefix !== '' ? $namePrefix . '/' . $model->getName() : $model->getName();
+        $typeParameters = $model->getTypeParameters();
 
         $scope = $parentScope;
-        if (!empty($model->getTypeAliases()) || !empty($model->getChildModels())) {
+        $needsChildScope = !empty($model->getTypeAliases()) || !empty($model->getChildModels()) || !empty($typeParameters);
+
+        if ($needsChildScope) {
             $scope = $this->discoverModelNames($model, $parentScope, $name);
+
+            if (count($typeParameters) !== count(array_unique($typeParameters))) {
+                $this->throwEvaluatorError(sprintf('Duplicate type parameter in model "%s"', $name), $model, $context);
+            }
+
+            foreach ($typeParameters as $typeParam) {
+                $scope->registerTypeParameter($typeParam);
+            }
 
             $scopedAliases = $this->evaluateTypeAliases($model->getTypeAliases(), $scope, $context);
             foreach ($scopedAliases as $aliasName => $aliasData) {
@@ -243,13 +257,217 @@ class SchemaEvaluator
 
         $annotations = $this->valueResolver->evaluateAnnotations($model->getAnnotations(), $context);
         $metadata = $this->valueResolver->evaluateMetadata($model->getMetadata(), $context);
-        $properties = $this->typeEvaluator->evaluateProperties($model->getProperties(), $name, $scope, $context);
+        $ownProperties = $this->typeEvaluator->evaluateProperties($model->getProperties(), $name, $scope, $context);
 
-        $context->registerStruct($name, new Struct($name, false, $properties, $metadata, $annotations));
+        $inheritedProperties = [];
+        $inheritedMetadata = [];
+        $inheritedAnnotations = [];
+        $seenPropertyNames = [];
 
-        foreach ($model->getChildModels() as $child) {
+        foreach ($model->getParentTypes() as $parentTypeNode) {
+            $parentStructName = null;
+            $typeArgumentMap = [];
+
+            if ($parentTypeNode instanceof SimpleTypeNode) {
+                $parentStructName = $parentTypeNode->getName();
+            } elseif ($parentTypeNode instanceof GenericTypeNode) {
+                $parentStructName = $parentTypeNode->getName();
+            }
+
+            if ($parentStructName === null) {
+                $this->throwEvaluatorError('Invalid parent type', $parentTypeNode, $context);
+            }
+
+            if ($scope->isModelName($parentStructName)) {
+                // already fine
+            } else {
+                $this->throwEvaluatorError(sprintf('Parent type "%s" is not a known model', $parentStructName), $parentTypeNode, $context);
+            }
+
+            $parentStruct = $context->getStruct($parentStructName);
+            if ($parentStruct === null) {
+                $this->throwEvaluatorError(sprintf('Parent model "%s" is not yet evaluated (possible circular inheritance)', $parentStructName), $parentTypeNode, $context);
+            }
+
+            if ($parentTypeNode instanceof GenericTypeNode) {
+                $parentTypeParams = $parentStruct->getTypeParameters();
+                $argNodes = $parentTypeNode->getArguments();
+                if (count($parentTypeParams) !== count($argNodes)) {
+                    $this->throwEvaluatorError(
+                        sprintf('Type argument count mismatch for "%s": expected %d, got %d', $parentStructName, count($parentTypeParams), count($argNodes)),
+                        $parentTypeNode,
+                        $context
+                    );
+                }
+                $resolvedArgs = [];
+                foreach ($argNodes as $argNode) {
+                    $resolvedArgs[] = $this->typeEvaluator->evaluateType($argNode, $name, $scope, $context);
+                }
+                $typeArgumentMap = array_combine($parentTypeParams, $resolvedArgs);
+            }
+
+            foreach ($parentStruct->getProperties() as $prop) {
+                $propName = $prop->getName();
+                if (isset($seenPropertyNames[$propName])) {
+                    $this->throwEvaluatorError(
+                        sprintf('Duplicate property "%s" inherited from multiple parents in "%s"', $propName, $name),
+                        $parentTypeNode,
+                        $context
+                    );
+                }
+                $seenPropertyNames[$propName] = true;
+
+                $propType = $prop->getType();
+                if (!empty($typeArgumentMap)) {
+                    $propType = $this->substituteTypeParameters($propType, $typeArgumentMap);
+                }
+                $inheritedProperties[] = new StructProperty(
+                    $propName,
+                    $propType,
+                    $prop->isOptional(),
+                    $prop->getAnnotations(),
+                    $prop->getComment()
+                );
+            }
+
+            foreach ($parentStruct->getMetadata() as $entry) {
+                $inheritedMetadata[$entry->getKey()] = $entry;
+            }
+            foreach ($parentStruct->getAnnotations()->all() as $annName => $ann) {
+                $inheritedAnnotations[$annName] = $ann;
+            }
+        }
+
+        if (!empty($model->getParentTypes())) {
+            foreach ($ownProperties as $prop) {
+                if (isset($seenPropertyNames[$prop->getName()])) {
+                    $this->throwEvaluatorError(
+                        sprintf('Property "%s" in "%s" conflicts with an inherited property', $prop->getName(), $name),
+                        $model,
+                        $context
+                    );
+                }
+            }
+
+            $allProperties = array_merge($inheritedProperties, $ownProperties);
+
+            foreach ($metadata as $entry) {
+                $inheritedMetadata[$entry->getKey()] = $entry;
+            }
+            $allMetadata = array_values($inheritedMetadata);
+
+            foreach ($annotations->all() as $annName => $ann) {
+                $inheritedAnnotations[$annName] = $ann;
+            }
+            $allAnnotations = new AnnotationCollection($inheritedAnnotations);
+        } else {
+            $allProperties = $ownProperties;
+            $allMetadata = $metadata;
+            $allAnnotations = $annotations;
+        }
+
+        $context->registerStruct($name, new Struct($name, false, $allProperties, $allMetadata, $allAnnotations, $typeParameters, $model->isPrivate()));
+
+        $sortedChildren = $this->topologicalSortModels($model->getChildModels(), $context);
+        foreach ($sortedChildren as $child) {
             $this->evaluateModel($child, $scope, $name, $context);
         }
+    }
+
+    /**
+     * @param array<ModelDefinitionNode> $models
+     * @return array<ModelDefinitionNode>
+     */
+    private function topologicalSortModels(array $models, EvaluationContext $context): array
+    {
+        if (count($models) <= 1) {
+            return $models;
+        }
+
+        $modelsByName = [];
+        $deps = [];
+        foreach ($models as $model) {
+            $modelName = $model->getName();
+            $modelsByName[$modelName] = $model;
+            $deps[$modelName] = [];
+            foreach ($model->getParentTypes() as $parentTypeNode) {
+                if ($parentTypeNode instanceof SimpleTypeNode) {
+                    $deps[$modelName][] = $parentTypeNode->getName();
+                } elseif ($parentTypeNode instanceof GenericTypeNode) {
+                    $deps[$modelName][] = $parentTypeNode->getName();
+                }
+            }
+        }
+
+        $sorted = [];
+        $visited = [];
+        $visiting = [];
+
+        foreach (array_keys($modelsByName) as $name) {
+            if (!isset($visited[$name])) {
+                $this->topoSortVisit($name, $deps, $modelsByName, $visited, $visiting, $sorted, $context);
+            }
+        }
+
+        return $sorted;
+    }
+
+    /**
+     * @param array<string, array<string>> $deps
+     * @param array<string, ModelDefinitionNode> $modelsByName
+     * @param array<string, true> $visited
+     * @param array<string, true> $visiting
+     * @param array<ModelDefinitionNode> $sorted
+     */
+    private function topoSortVisit(string $name, array $deps, array $modelsByName, array &$visited, array &$visiting, array &$sorted, EvaluationContext $context): void
+    {
+        if (isset($visiting[$name])) {
+            $this->throwEvaluatorError(
+                sprintf('Circular inheritance detected involving "%s"', $name),
+                $modelsByName[$name] ?? null,
+                $context
+            );
+        }
+
+        if (isset($visited[$name])) {
+            return;
+        }
+
+        $visiting[$name] = true;
+
+        foreach ($deps[$name] ?? [] as $dep) {
+            if (isset($modelsByName[$dep])) {
+                $this->topoSortVisit($dep, $deps, $modelsByName, $visited, $visiting, $sorted, $context);
+            }
+        }
+
+        unset($visiting[$name]);
+        $visited[$name] = true;
+
+        if (isset($modelsByName[$name])) {
+            $sorted[] = $modelsByName[$name];
+        }
+    }
+
+    /**
+     * @param array<string, Type> $map
+     */
+    private function substituteTypeParameters(Type $type, array $map): Type
+    {
+        return match ($type->getKind()) {
+            TypeKind::TypeParameter => $map[$type->getName() ?? ''] ?? $type,
+            TypeKind::Array => Type::array($this->substituteTypeParameters($type->getInnerType() ?? Type::simple('mixed'), $map)),
+            TypeKind::Nullable => Type::nullable($this->substituteTypeParameters($type->getInnerType() ?? Type::simple('mixed'), $map)),
+            TypeKind::Union => Type::union(array_map(
+                fn(Type $t) => $this->substituteTypeParameters($t, $map),
+                $type->getUnionTypes()
+            )),
+            TypeKind::Generic => Type::generic(
+                $type->getName() ?? '',
+                array_map(fn(Type $t) => $this->substituteTypeParameters($t, $map), $type->getTypeArguments())
+            ),
+            default => $type,
+        };
     }
 
     /**
@@ -334,6 +552,10 @@ class SchemaEvaluator
 
         foreach ($type->getUnionTypes() as $unionType) {
             $this->collectAliasReferences($unionType, $refs);
+        }
+
+        foreach ($type->getTypeArguments() as $argType) {
+            $this->collectAliasReferences($argType, $refs);
         }
 
         return $refs;

@@ -25,6 +25,7 @@ use ClanCats\SchemaScript\Node\Type\NullableTypeNode;
 use ClanCats\SchemaScript\Node\Type\UnionTypeNode;
 use ClanCats\SchemaScript\Node\Type\InlineObjectTypeNode;
 use ClanCats\SchemaScript\Node\Type\StringLiteralTypeNode;
+use ClanCats\SchemaScript\Node\Type\GenericTypeNode;
 
 class ASTPrinter implements NodeVisitorInterface
 {
@@ -71,6 +72,11 @@ class ASTPrinter implements NodeVisitorInterface
 
         if ($type instanceof StringLiteralTypeNode) {
             return "'" . $type->getValue() . "'";
+        }
+
+        if ($type instanceof GenericTypeNode) {
+            $args = array_map(fn(TypeNode $t) => $this->typeToString($t), $type->getArguments());
+            return $type->getName() . '<' . implode(', ', $args) . '>';
         }
 
         return '?';
@@ -134,7 +140,19 @@ class ASTPrinter implements NodeVisitorInterface
 
     public function visitModelDefinition(ModelDefinitionNode $node): void
     {
-        $this->line('Model: ' . $node->getName());
+        $prefix = $node->isPrivate() ? 'private ' : '';
+        $typeParamSuffix = '';
+        if (!empty($node->getTypeParameters())) {
+            $typeParamSuffix = '<' . implode(', ', $node->getTypeParameters()) . '>';
+        }
+        $parentSuffix = '';
+        if (!empty($node->getParentTypes())) {
+            $parentSuffix = ': ' . implode(', ', array_map(
+                fn(TypeNode $t) => $this->typeToString($t),
+                $node->getParentTypes()
+            ));
+        }
+        $this->line('Model: ' . $prefix . $node->getName() . $typeParamSuffix . $parentSuffix);
         $this->depth++;
         foreach ($node->getAnnotations() as $annotation) {
             $annotation->accept($this);
@@ -327,5 +345,11 @@ class ASTPrinter implements NodeVisitorInterface
     public function visitComment(CommentNode $node): void
     {
         $this->line('Comment: ' . $node->getText());
+    }
+
+    public function visitGenericType(GenericTypeNode $node): void
+    {
+        $args = array_map(fn(TypeNode $t) => $this->typeToString($t), $node->getArguments());
+        $this->line('GenericType: ' . $node->getName() . '<' . implode(', ', $args) . '>');
     }
 }

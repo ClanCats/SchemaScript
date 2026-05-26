@@ -111,6 +111,53 @@ class ScscWriterTest extends TestCase
         $this->assertStringContainsString('    unseen?: bool', $output);
     }
 
+    public function testWriteGenericType(): void
+    {
+        $properties = [
+            new StructProperty('data', Type::generic('map', [Type::simple('string'), Type::simple('int')]), false),
+        ];
+        $definition = new Definition([], [], [], ['Config' => new Struct('Config', false, $properties)]);
+        $output = $this->writer->write($definition);
+
+        $this->assertStringContainsString('    data: map<string, int>', $output);
+    }
+
+    public function testWriteTypeParameter(): void
+    {
+        $properties = [
+            new StructProperty('value', Type::typeParameter('T'), false),
+        ];
+        $definition = new Definition([], [], [], ['Wrapper' => new Struct('Wrapper', false, $properties, [], new AnnotationCollection(), ['T'])]);
+        $output = $this->writer->write($definition);
+
+        $this->assertStringContainsString('Wrapper<T> {', $output);
+        $this->assertStringContainsString('    value: T', $output);
+    }
+
+    public function testWriteGenericModelMultipleParams(): void
+    {
+        $properties = [
+            new StructProperty('data', Type::typeParameter('T'), false),
+            new StructProperty('error', Type::typeParameter('E'), false),
+        ];
+        $definition = new Definition([], [], [], ['Result' => new Struct('Result', false, $properties, [], new AnnotationCollection(), ['T', 'E'])]);
+        $output = $this->writer->write($definition);
+
+        $this->assertStringContainsString('Result<T, E> {', $output);
+    }
+
+    public function testWriteNestedGenericType(): void
+    {
+        $innerMap = Type::generic('map', [Type::simple('string'), Type::simple('int')]);
+        $properties = [
+            new StructProperty('nested', Type::generic('map', [Type::simple('string'), $innerMap]), false),
+        ];
+        $definition = new Definition([], [], [], ['Config' => new Struct('Config', false, $properties)]);
+        $output = $this->writer->write($definition);
+
+        $this->assertStringContainsString('    nested: map<string, map<string, int>>', $output);
+    }
+
     public function testWriteFromImportedSamg(): void
     {
         $importer = new \ClanCats\SchemaScript\Importer\Samg\SamgImporter();

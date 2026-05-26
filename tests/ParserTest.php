@@ -1669,4 +1669,106 @@ SCSC;
         $this->expectExceptionMessage('Orphaned annotation');
         $this->parse("@deprecated");
     }
+
+    // --- Generic Types ---
+
+    public function testGenericTypeInProperty(): void
+    {
+        $scope = $this->parse("Foo {\n  data: map<string, int>\n}");
+        $model = $scope->getModels()[0];
+        $prop = $model->getProperties()[0];
+        $type = $prop->getType();
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $type);
+        $this->assertSame('map', $type->getName());
+        $this->assertCount(2, $type->getArguments());
+        $this->assertInstanceOf(SimpleTypeNode::class, $type->getArguments()[0]);
+        $this->assertSame('string', $type->getArguments()[0]->getName());
+        $this->assertInstanceOf(SimpleTypeNode::class, $type->getArguments()[1]);
+        $this->assertSame('int', $type->getArguments()[1]->getName());
+    }
+
+    public function testGenericTypeSingleArg(): void
+    {
+        $scope = $this->parse("Foo {\n  items: List<User>\n}");
+        $type = $scope->getModels()[0]->getProperties()[0]->getType();
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $type);
+        $this->assertSame('List', $type->getName());
+        $this->assertCount(1, $type->getArguments());
+    }
+
+    public function testGenericTypeArraySuffix(): void
+    {
+        $scope = $this->parse("Foo {\n  items: map<string, int>[]\n}");
+        $type = $scope->getModels()[0]->getProperties()[0]->getType();
+        $this->assertInstanceOf(ArrayTypeNode::class, $type);
+        $inner = $type->getElementType();
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $inner);
+        $this->assertSame('map', $inner->getName());
+    }
+
+    public function testGenericTypeNullable(): void
+    {
+        $scope = $this->parse("Foo {\n  data: map<string, int>?\n}");
+        $type = $scope->getModels()[0]->getProperties()[0]->getType();
+        $this->assertInstanceOf(NullableTypeNode::class, $type);
+        $inner = $type->getInnerType();
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $inner);
+    }
+
+    public function testGenericTypeNestedGenerics(): void
+    {
+        $scope = $this->parse("Foo {\n  data: map<string, map<string, int>>\n}");
+        $type = $scope->getModels()[0]->getProperties()[0]->getType();
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $type);
+        $this->assertSame('map', $type->getName());
+        $valueArg = $type->getArguments()[1];
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $valueArg);
+        $this->assertSame('map', $valueArg->getName());
+    }
+
+    public function testGenericTypeWithArrayArg(): void
+    {
+        $scope = $this->parse("Foo {\n  data: Paginated<User[]>\n}");
+        $type = $scope->getModels()[0]->getProperties()[0]->getType();
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $type);
+        $arg = $type->getArguments()[0];
+        $this->assertInstanceOf(ArrayTypeNode::class, $arg);
+    }
+
+    // --- Generic Model Definitions ---
+
+    public function testGenericModelDefinition(): void
+    {
+        $scope = $this->parse("Paginated<T> {\n  items: T[]\n  total: int\n}");
+        $model = $scope->getModels()[0];
+        $this->assertSame('Paginated', $model->getName());
+        $this->assertSame(['T'], $model->getTypeParameters());
+        $this->assertCount(2, $model->getProperties());
+    }
+
+    public function testGenericModelMultipleParams(): void
+    {
+        $scope = $this->parse("Result<T, E> {\n  data: T\n  error: E\n}");
+        $model = $scope->getModels()[0];
+        $this->assertSame('Result', $model->getName());
+        $this->assertSame(['T', 'E'], $model->getTypeParameters());
+    }
+
+    public function testNonGenericModelHasEmptyTypeParams(): void
+    {
+        $scope = $this->parse("User {\n  id: int\n}");
+        $model = $scope->getModels()[0];
+        $this->assertSame([], $model->getTypeParameters());
+    }
+
+    public function testGenericTypeInUnion(): void
+    {
+        $scope = $this->parse("Foo {\n  data: map<string, int>|string\n}");
+        $type = $scope->getModels()[0]->getProperties()[0]->getType();
+        $this->assertInstanceOf(UnionTypeNode::class, $type);
+        $types = $type->getTypes();
+        $this->assertCount(2, $types);
+        $this->assertInstanceOf(\ClanCats\SchemaScript\Node\Type\GenericTypeNode::class, $types[0]);
+        $this->assertInstanceOf(SimpleTypeNode::class, $types[1]);
+    }
 }

@@ -94,4 +94,28 @@ class TsTypeResolver implements TypeVisitorInterface
     {
         return "'" . str_replace("'", "\\'", $value) . "'";
     }
+
+    public function visitTypeParameter(string $name): string
+    {
+        return $name;
+    }
+
+    /**
+     * @param array<Type> $typeArguments
+     */
+    public function visitGeneric(string $baseName, array $typeArguments): string
+    {
+        $args = array_map(fn(Type $t) => $t->accept($this), $typeArguments);
+
+        $struct = $this->resolved->getStruct($baseName);
+        if ($struct !== null) {
+            $langAnnotation = $struct->getAnnotation('lang.ts');
+            if ($langAnnotation !== null) {
+                $tsName = $langAnnotation->getArguments()[0] ?? $baseName;
+                return $tsName . '<' . implode(', ', $args) . '>';
+            }
+        }
+
+        return $baseName . '<' . implode(', ', $args) . '>';
+    }
 }

@@ -309,6 +309,90 @@ User {
 }
 ```
 
+## Generics
+
+Models can declare type parameters in angle brackets after the model name:
+
+```
+Paginated<T> {
+    items: T[]
+    total: int
+}
+
+Result<T, E> {
+    data: T?
+    error: E?
+}
+```
+
+Type parameters (`T`, `E`, etc.) can be used anywhere a type is expected inside the model body — in arrays, nullable types, unions, and inline objects.
+
+### Generic Type Instantiation
+
+Use a generic model by providing concrete type arguments:
+
+```
+UserList {
+    pages: Paginated<User>
+    outcome: Result<User, string>
+}
+```
+
+The number of type arguments must match the number of type parameters declared on the model. Type parameter names must be unique within a model declaration.
+
+### Combining with Other Type Modifiers
+
+Generic types follow the same precedence rules as other types and can be combined with arrays, nullable, and unions:
+
+```
+Config {
+    items: map<string, int>[]
+    cache: map<string, User>?
+    nested: map<string, map<string, int>>
+}
+```
+
+### Child Model Scope
+
+Child models nested inside a generic model can reference the parent's type parameters:
+
+```
+Container<T> {
+    value: T
+
+    Metadata {
+        item: T
+        label: string
+    }
+}
+```
+
+### Standard Library Generic: `map`
+
+The standard library provides `map<K, V>`, a key-value mapping type. It generates language-appropriate output:
+
+- **TypeScript:** `Record<K, V>`
+- **PHP:** `array` with value casting via `array_map()`
+
+```
+Settings {
+    config: map<string, string>
+    scores: map<string, int>
+}
+```
+
+### Custom Generic Models with Language Annotations
+
+To control how a custom generic model is emitted by generators, use `@lang.php` and `@lang.ts` annotations. Generic models with these annotations are not emitted as standalone types — instead, generators use the annotation value at each usage site:
+
+```
+@lang.php('array')
+@lang.ts('Record')
+map<K, V> {}
+```
+
+Generic models without language annotations are emitted as proper generic types in languages that support them (e.g., TypeScript emits `export interface Paginated<T> { ... }`). PHP generators skip generic template models entirely and only handle concrete instantiations.
+
 ## Properties
 
 Properties use `name: type` syntax:
@@ -443,6 +527,7 @@ The standard library (`scsc/base`) provides these built-in types:
 | Date/Time | `timestamp`, `datetime`, `date`, `time` |
 | Identifiers | `uuid` |
 | Dynamic | `any`, `mixed` |
+| Collections | `map<K, V>` |
 
 Import with:
 

@@ -79,10 +79,22 @@ class ModelBodyParser extends SchemaParser
             return;
         }
 
+        if ($token->isType(TokenType::KeywordPrivate)) {
+            $this->skipToken();
+            $this->skipTokenOfType([TokenType::Line]);
+            $this->expectCurrentType(TokenType::Identifier);
+            /** @var ModelDefinitionNode $childModel */
+            $childModel = $this->parseChild(ModelDefinitionParser::class);
+            $childModel->setAnnotations($this->pendingAnnotations);
+            $childModel->setPrivate(true);
+            $this->pendingAnnotations = [];
+            $this->pendingComments = [];
+            $this->model->addChildModel($childModel);
+            return;
+        }
+
         if ($token->isType(TokenType::Identifier)) {
-            // Disambiguate: property (name: type) vs child model (Name { ... })
-            $next = $this->nextToken();
-            if ($next !== null && $next->isType(TokenType::ScopeOpen)) {
+            if ($this->isChildModelStart()) {
                 /** @var ModelDefinitionNode $childModel */
                 $childModel = $this->parseChild(ModelDefinitionParser::class);
                 $childModel->setAnnotations($this->pendingAnnotations);
@@ -107,6 +119,36 @@ class ModelBodyParser extends SchemaParser
         }
 
         throw $this->errorUnexpectedToken($token);
+    }
+
+    private function isChildModelStart(): bool
+    {
+        $i = 1;
+        $next = $this->nextToken($i);
+        if ($next === null) {
+            return false;
+        }
+
+        if ($next->isType(TokenType::ScopeOpen)) {
+            return true;
+        }
+
+        if ($next->isType(TokenType::AngleOpen)) {
+            $depth = 1;
+            $i++;
+            while (($peek = $this->nextToken($i)) !== null && $depth > 0) {
+                if ($peek->isType(TokenType::AngleOpen)) {
+                    $depth++;
+                } elseif ($peek->isType(TokenType::AngleClose)) {
+                    $depth--;
+                }
+                $i++;
+            }
+            $after = $this->nextToken($i);
+            return $after !== null && ($after->isType(TokenType::ScopeOpen) || $after->isType(TokenType::Colon));
+        }
+
+        return false;
     }
 
     /**

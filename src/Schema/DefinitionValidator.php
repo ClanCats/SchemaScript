@@ -52,6 +52,33 @@ class DefinitionValidator implements DefinitionVisitorInterface
             }
         }
 
+        foreach ($this->typeCollector->getGenericUsages() as $genericName => $argCount) {
+            $genericStruct = $this->definition->getStruct($genericName);
+            if ($genericStruct === null) {
+                continue;
+            }
+            if (!$genericStruct->isGeneric()) {
+                $this->errors[] = sprintf(
+                    "Property '%s' on struct '%s' uses type arguments on non-generic struct '%s'",
+                    $property->getName(),
+                    $struct->getName(),
+                    $genericName
+                );
+                continue;
+            }
+            $expectedCount = count($genericStruct->getTypeParameters());
+            if ($argCount !== $expectedCount) {
+                $this->errors[] = sprintf(
+                    "Property '%s' on struct '%s' passes %d type argument(s) to '%s', expected %d",
+                    $property->getName(),
+                    $struct->getName(),
+                    $argCount,
+                    $genericName,
+                    $expectedCount
+                );
+            }
+        }
+
         foreach ($this->typeCollector->getAliases() as $alias) {
             if ($this->definition->getTypeAlias($alias) === null) {
                 $this->errors[] = sprintf(

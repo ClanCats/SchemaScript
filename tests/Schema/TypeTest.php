@@ -218,4 +218,66 @@ class TypeTest extends TestCase
             Type::stringLiteral('hello')->toArray()
         );
     }
+
+    public function testTypeParameter(): void
+    {
+        $t = Type::typeParameter('T');
+        $this->assertSame(TypeKind::TypeParameter, $t->getKind());
+        $this->assertSame('T', $t->getName());
+    }
+
+    public function testIsTypeParameter(): void
+    {
+        $this->assertTrue(Type::typeParameter('T')->isTypeParameter());
+        $this->assertFalse(Type::simple('int')->isTypeParameter());
+    }
+
+    public function testGeneric(): void
+    {
+        $args = [Type::simple('string'), Type::simple('int')];
+        $t = Type::generic('map', $args);
+        $this->assertSame(TypeKind::Generic, $t->getKind());
+        $this->assertSame('map', $t->getName());
+        $this->assertSame($args, $t->getTypeArguments());
+    }
+
+    public function testIsGeneric(): void
+    {
+        $this->assertTrue(Type::generic('map', [Type::simple('string')])->isGeneric());
+        $this->assertFalse(Type::simple('int')->isGeneric());
+    }
+
+    public function testAcceptTypeParameter(): void
+    {
+        $visitor = $this->createMock(TypeVisitorInterface::class);
+        $visitor->expects($this->once())->method('visitTypeParameter')->with('T')->willReturn('param');
+        $this->assertSame('param', Type::typeParameter('T')->accept($visitor));
+    }
+
+    public function testAcceptGeneric(): void
+    {
+        $args = [Type::simple('string'), Type::simple('int')];
+        $visitor = $this->createMock(TypeVisitorInterface::class);
+        $visitor->expects($this->once())->method('visitGeneric')->with('map', $args)->willReturn('gen');
+        $this->assertSame('gen', Type::generic('map', $args)->accept($visitor));
+    }
+
+    public function testToArrayTypeParameter(): void
+    {
+        $this->assertSame(
+            ['kind' => 'type_parameter', 'name' => 'T'],
+            Type::typeParameter('T')->toArray()
+        );
+    }
+
+    public function testToArrayGeneric(): void
+    {
+        $this->assertSame(
+            ['kind' => 'generic', 'name' => 'map', 'typeArguments' => [
+                ['kind' => 'simple', 'name' => 'string'],
+                ['kind' => 'simple', 'name' => 'int'],
+            ]],
+            Type::generic('map', [Type::simple('string'), Type::simple('int')])->toArray()
+        );
+    }
 }

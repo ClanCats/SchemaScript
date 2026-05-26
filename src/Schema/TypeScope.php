@@ -26,6 +26,11 @@ class TypeScope
         $this->typeAliases[$name] = new TypeScopeEntry($name, $hasTypeDefinition);
     }
 
+    public function registerTypeParameter(string $name): void
+    {
+        $this->typeAliases[$name] = new TypeScopeEntry($name, false, true);
+    }
+
     public function registerModelName(string $name): void
     {
         $this->modelNames[$name] = true;

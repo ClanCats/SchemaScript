@@ -11,6 +11,7 @@ use ClanCats\SchemaScript\Node\Type\ArrayTypeNode;
 use ClanCats\SchemaScript\Node\Type\UnionTypeNode;
 use ClanCats\SchemaScript\Node\Type\InlineObjectTypeNode;
 use ClanCats\SchemaScript\Node\Type\StringLiteralTypeNode;
+use ClanCats\SchemaScript\Node\Type\GenericTypeNode;
 
 class TypeParser extends SchemaParser
 {
@@ -60,6 +61,24 @@ class TypeParser extends SchemaParser
             $type = new StringLiteralTypeNode($token->getValue());
             $this->capturePosition($type, $token);
             $this->skipToken();
+        } elseif ($token->isType(TokenType::Identifier) && $this->nextToken() !== null && $this->nextToken()->isType(TokenType::AngleOpen)) {
+            $name = $token->getValue();
+            $this->skipToken(); // skip identifier
+            $this->skipToken(); // skip <
+            $arguments = [];
+            while (true) {
+                $this->skipTokenOfType([TokenType::Space, TokenType::Line]);
+                $arguments[] = $this->parseType();
+                $this->skipTokenOfType([TokenType::Space, TokenType::Line]);
+                if ($this->currentToken()->isType(TokenType::AngleClose)) {
+                    $this->skipToken();
+                    break;
+                }
+                $this->expectCurrentType(TokenType::Comma);
+                $this->skipToken();
+            }
+            $type = new GenericTypeNode($name, $arguments);
+            $this->capturePosition($type, $token);
         } elseif ($token->isType(TokenType::Identifier)) {
             $type = new SimpleTypeNode($token->getValue());
             $this->capturePosition($type, $token);

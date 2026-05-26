@@ -39,11 +39,16 @@ class ScscWriter
      */
     private function writeModels(Definition $definition, array &$lines): void
     {
-        foreach ($definition->getModels() as $struct) {
+        foreach ($definition->getAllModels() as $struct) {
             foreach ($struct->getAnnotations()->all() as $annotation) {
                 $lines[] = $this->formatAnnotation($annotation);
             }
-            $lines[] = $struct->getName() . ' {';
+            $privatePrefix = $struct->isPrivate() ? 'private ' : '';
+            $typeParamSuffix = '';
+            if ($struct->isGeneric()) {
+                $typeParamSuffix = '<' . implode(', ', $struct->getTypeParameters()) . '>';
+            }
+            $lines[] = $privatePrefix . $struct->getName() . $typeParamSuffix . ' {';
 
             foreach ($struct->getProperties() as $prop) {
                 $this->writeProperty($prop, $lines);

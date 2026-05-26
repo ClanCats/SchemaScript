@@ -8,6 +8,7 @@ use ClanCats\SchemaScript\Node\Type\NullableTypeNode;
 use ClanCats\SchemaScript\Node\Type\UnionTypeNode;
 use ClanCats\SchemaScript\Node\Type\InlineObjectTypeNode;
 use ClanCats\SchemaScript\Node\Type\StringLiteralTypeNode;
+use ClanCats\SchemaScript\Node\Type\GenericTypeNode;
 
 interface NodeVisitorInterface
 {
@@ -31,4 +32,5 @@ interface NodeVisitorInterface
     public function visitInlineObjectType(InlineObjectTypeNode $node): void;
     public function visitStringLiteralType(StringLiteralTypeNode $node): void;
     public function visitComment(CommentNode $node): void;
+    public function visitGenericType(GenericTypeNode $node): void;
 }

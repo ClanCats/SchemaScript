@@ -47,4 +47,18 @@ class ScscTypeStringVisitor implements TypeVisitorInterface
     {
         return "'" . addslashes($value) . "'";
     }
+
+    public function visitTypeParameter(string $name): string
+    {
+        return $name;
+    }
+
+    /**
+     * @param array<Type> $typeArguments
+     */
+    public function visitGeneric(string $baseName, array $typeArguments): string
+    {
+        $args = array_map(fn(Type $t) => $t->accept($this), $typeArguments);
+        return $baseName . '<' . implode(', ', $args) . '>';
+    }
 }

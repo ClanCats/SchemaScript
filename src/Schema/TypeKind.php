@@ -11,4 +11,6 @@ enum TypeKind: string
     case Nullable = 'nullable';
     case Union = 'union';
     case StringLiteral = 'string_literal';
+    case TypeParameter = 'type_parameter';
+    case Generic = 'generic';
 }

@@ -58,6 +58,11 @@ class EvaluationContext
         return isset($this->structs[$name]);
     }
 
+    public function getStruct(string $name): ?Struct
+    {
+        return $this->structs[$name] ?? null;
+    }
+
     /**
      * @return array<string, Struct>
      */

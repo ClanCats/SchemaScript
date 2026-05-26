@@ -698,4 +698,56 @@ class LexerTest extends TestCase
             TokenType::Comment,
         ], $types);
     }
+
+    public function testAngleBrackets(): void
+    {
+        $this->assertTokenTypes('<>', [TokenType::AngleOpen, TokenType::AngleClose]);
+    }
+
+    public function testAngleBracketsInGenericType(): void
+    {
+        $this->assertTokenTypes('map<string, int>', [
+            TokenType::Identifier,
+            TokenType::AngleOpen,
+            TokenType::Identifier,
+            TokenType::Comma,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::AngleClose,
+        ]);
+    }
+
+    public function testAngleBracketsNested(): void
+    {
+        $tokens = $this->tokensFromCode('map<string, map<int, bool>>');
+        $types = array_map(fn(Token $t) => $t->getType(), $tokens);
+        $this->assertContains(TokenType::AngleOpen, $types);
+        $openCount = count(array_filter($types, fn($t) => $t === TokenType::AngleOpen));
+        $closeCount = count(array_filter($types, fn($t) => $t === TokenType::AngleClose));
+        $this->assertSame(2, $openCount);
+        $this->assertSame(2, $closeCount);
+    }
+
+    public function testAngleBracketsInModelDefinition(): void
+    {
+        $this->assertTokenTypes('Paginated<T>', [
+            TokenType::Identifier,
+            TokenType::AngleOpen,
+            TokenType::Identifier,
+            TokenType::AngleClose,
+        ]);
+    }
+
+    public function testAngleBracketsMultipleParams(): void
+    {
+        $this->assertTokenTypes('Result<T, E>', [
+            TokenType::Identifier,
+            TokenType::AngleOpen,
+            TokenType::Identifier,
+            TokenType::Comma,
+            TokenType::Space,
+            TokenType::Identifier,
+            TokenType::AngleClose,
+        ]);
+    }
 }

@@ -160,7 +160,7 @@ SCSC;
         $def = $this->evaluateConceptFile();
         $structs = $def->getStructs();
 
-        $this->assertCount(7, $structs);
+        $this->assertCount(8, $structs);
         $this->assertArrayHasKey('User', $structs);
         $this->assertArrayHasKey('UserAvatarImage', $structs);
         $this->assertArrayHasKey('UserLastMessages', $structs);
@@ -168,6 +168,7 @@ SCSC;
         $this->assertArrayHasKey('ImageProxy', $structs);
         $this->assertArrayHasKey('Message', $structs);
         $this->assertArrayHasKey('MessageContext', $structs);
+        $this->assertArrayHasKey('map', $structs);
     }
 
     public function testInlineStructFlag(): void
@@ -1456,5 +1457,148 @@ SCSC;
         $def = $this->evaluateCode("Parent {\n  @internal\n  Child {\n    id: string\n  }\n  name: string\n}");
         $struct = $def->getStruct('Parent/Child');
         $this->assertTrue($struct->hasAnnotation('internal'));
+    }
+
+    // --- Generics ---
+
+    public function testGenericModelHasTypeParameters(): void
+    {
+        $def = $this->evaluateCode("Paginated<T> {\n  items: T[]\n  total: int\n}");
+        $struct = $def->getStruct('Paginated');
+        $this->assertNotNull($struct);
+        $this->assertTrue($struct->isGeneric());
+        $this->assertSame(['T'], $struct->getTypeParameters());
+    }
+
+    public function testGenericModelMultipleParams(): void
+    {
+        $def = $this->evaluateCode("Result<T, E> {\n  data: T\n  error: E\n  success: bool\n}");
+        $struct = $def->getStruct('Result');
+        $this->assertSame(['T', 'E'], $struct->getTypeParameters());
+    }
+
+    public function testTypeParameterResolvesToTypeParameterKind(): void
+    {
+        $def = $this->evaluateCode("Wrapper<T> {\n  value: T\n}");
+        $struct = $def->getStruct('Wrapper');
+        $valueProp = $struct->getProperties()[0];
+        $this->assertSame(TypeKind::TypeParameter, $valueProp->getType()->getKind());
+        $this->assertSame('T', $valueProp->getType()->getName());
+    }
+
+    public function testTypeParameterInArrayResolvesCorrectly(): void
+    {
+        $def = $this->evaluateCode("List<T> {\n  items: T[]\n}");
+        $struct = $def->getStruct('List');
+        $type = $struct->getProperties()[0]->getType();
+        $this->assertSame(TypeKind::Array, $type->getKind());
+        $this->assertSame(TypeKind::TypeParameter, $type->getInnerType()->getKind());
+        $this->assertSame('T', $type->getInnerType()->getName());
+    }
+
+    public function testTypeParameterNullable(): void
+    {
+        $def = $this->evaluateCode("Maybe<T> {\n  value: T?\n}");
+        $struct = $def->getStruct('Maybe');
+        $type = $struct->getProperties()[0]->getType();
+        $this->assertSame(TypeKind::Nullable, $type->getKind());
+        $this->assertSame(TypeKind::TypeParameter, $type->getInnerType()->getKind());
+    }
+
+    public function testGenericInstantiationInProperty(): void
+    {
+        $def = $this->evaluateCode("Paginated<T> {\n  items: T[]\n  total: int\n}\nUser {\n  id: int\n  pages: Paginated<User>\n}");
+        $userStruct = $def->getStruct('User');
+        $pagesProp = $userStruct->getProperties()[1];
+        $type = $pagesProp->getType();
+        $this->assertSame(TypeKind::Generic, $type->getKind());
+        $this->assertSame('Paginated', $type->getName());
+        $this->assertCount(1, $type->getTypeArguments());
+        $this->assertSame(TypeKind::Reference, $type->getTypeArguments()[0]->getKind());
+        $this->assertSame('User', $type->getTypeArguments()[0]->getName());
+    }
+
+    public function testMapTypeFromStdlib(): void
+    {
+        $def = $this->evaluateCode("Config {\n  settings: map<string, string>\n}");
+        $struct = $def->getStruct('Config');
+        $type = $struct->getProperties()[0]->getType();
+        $this->assertSame(TypeKind::Generic, $type->getKind());
+        $this->assertSame('map', $type->getName());
+        $this->assertCount(2, $type->getTypeArguments());
+        $this->assertSame('string', $type->getTypeArguments()[0]->getName());
+        $this->assertSame('string', $type->getTypeArguments()[1]->getName());
+    }
+
+    public function testMapTypeNullable(): void
+    {
+        $def = $this->evaluateCode("Config {\n  settings: map<string, int>?\n}");
+        $type = $def->getStruct('Config')->getProperties()[0]->getType();
+        $this->assertSame(TypeKind::Nullable, $type->getKind());
+        $inner = $type->getInnerType();
+        $this->assertSame(TypeKind::Generic, $inner->getKind());
+        $this->assertSame('map', $inner->getName());
+    }
+
+    public function testMapTypeArray(): void
+    {
+        $def = $this->evaluateCode("Config {\n  items: map<string, int>[]\n}");
+        $type = $def->getStruct('Config')->getProperties()[0]->getType();
+        $this->assertSame(TypeKind::Array, $type->getKind());
+        $inner = $type->getInnerType();
+        $this->assertSame(TypeKind::Generic, $inner->getKind());
+        $this->assertSame('map', $inner->getName());
+    }
+
+    public function testNestedMapType(): void
+    {
+        $def = $this->evaluateCode("Config {\n  data: map<string, map<string, int>>\n}");
+        $type = $def->getStruct('Config')->getProperties()[0]->getType();
+        $this->assertSame(TypeKind::Generic, $type->getKind());
+        $valueArg = $type->getTypeArguments()[1];
+        $this->assertSame(TypeKind::Generic, $valueArg->getKind());
+        $this->assertSame('map', $valueArg->getName());
+    }
+
+    public function testNonGenericModelHasNoTypeParameters(): void
+    {
+        $def = $this->evaluateCode("User {\n  id: int\n}");
+        $struct = $def->getStruct('User');
+        $this->assertFalse($struct->isGeneric());
+        $this->assertSame([], $struct->getTypeParameters());
+    }
+
+    public function testMapStructFromStdlibIsGeneric(): void
+    {
+        $def = $this->evaluateCode("User {\n  id: int\n}");
+        $mapStruct = $def->getStruct('map');
+        $this->assertNotNull($mapStruct);
+        $this->assertTrue($mapStruct->isGeneric());
+        $this->assertSame(['K', 'V'], $mapStruct->getTypeParameters());
+    }
+
+    public function testDuplicateTypeParameterThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Duplicate type parameter');
+        $this->evaluateCode("Wrapper<T, T> {\n  a: T\n  b: T\n}");
+    }
+
+    public function testGenericArityMismatchCaughtByValidator(): void
+    {
+        $def = $this->evaluateCode("Paginated<T> {\n  items: T[]\n}\nUser {\n  pages: Paginated<int, string>\n}");
+        $validator = new \ClanCats\SchemaScript\Schema\DefinitionValidator();
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('passes 2 type argument(s)');
+        $validator->validate($def);
+    }
+
+    public function testGenericArgsOnNonGenericStructCaughtByValidator(): void
+    {
+        $def = $this->evaluateCode("User {\n  id: int\n}\nPost {\n  author: User<string>\n}");
+        $validator = new \ClanCats\SchemaScript\Schema\DefinitionValidator();
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('non-generic struct');
+        $validator->validate($def);
     }
 }

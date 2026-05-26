@@ -63,4 +63,24 @@ class PhpSamgCastVisitor extends PhpBaseCastVisitor
     {
         return $this->direction === 'localToInterface' ? 'localToInterface' : 'interfaceToLocal';
     }
+
+    /**
+     * @param array<Type> $typeArguments
+     */
+    public function visitGeneric(string $baseName, array $typeArguments): string
+    {
+        $struct = $this->resolved->getStruct($baseName);
+        if ($struct !== null) {
+            $langAnnotation = $struct->getAnnotation('lang.php');
+            if ($langAnnotation !== null) {
+                $phpType = $langAnnotation->getArguments()[0] ?? null;
+                if ($phpType === 'array' && count($typeArguments) >= 2) {
+                    $valueCast = $typeArguments[1]->accept($this->createWithAccess('$v'));
+                    return "array_map(fn(\$v) => {$valueCast}, {$this->access} ?? [])";
+                }
+            }
+        }
+
+        return "{$this->access} ?? null";
+    }
 }

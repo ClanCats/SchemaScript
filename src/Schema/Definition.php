@@ -140,6 +140,14 @@ class Definition
      */
     public function getModels(): array
     {
+        return array_filter($this->structs, fn(Struct $s) => !$s->isInline() && !$s->isPrivate());
+    }
+
+    /**
+     * @return array<string, Struct>
+     */
+    public function getAllModels(): array
+    {
         return array_filter($this->structs, fn(Struct $s) => !$s->isInline());
     }
 

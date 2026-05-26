@@ -35,6 +35,9 @@ class PhpSamgGenerator implements GeneratorInterface
         $resolved = new ResolvedDefinition($definition, [$ctx->mapFrom, $ctx->mapTo]);
 
         foreach ($resolved->getModels() as $struct) {
+            if ($struct->isGeneric()) {
+                continue;
+            }
             $code = $this->generateMapClass($ctx, $struct, $resolved, $namespace);
             $result->addFile($struct->getName() . 'Map.php', $code);
         }
