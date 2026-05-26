@@ -53,12 +53,8 @@ User {
     name: string
 }
 
-UserResponse: SingleResponse<User> {
-
-}
-UserCollectionResponse: CollectionResponse<User> {
-
-}
+UserResponse: SingleResponse<User> {}
+UserCollectionResponse: CollectionResponse<User> {}
 
 
 [type] = {

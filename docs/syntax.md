@@ -1,3 +1,5 @@
+> **Note:** This document has been superseded by the [mdbook documentation](./src/SUMMARY.md). It is preserved for reference.
+
 # SchemaScript Syntax
 
 SchemaScript (`.scsc`) is a structured, block-based schema definition language. It defines data models with typed properties, annotations, type aliases, namespaces, and constants. A toolchain evaluates `.scsc` files into a `Definition` that code generators consume to produce language-specific output (e.g., TypeScript interfaces, PHP mapper classes).

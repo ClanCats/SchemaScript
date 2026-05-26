@@ -1,0 +1,14 @@
+[book]
+authors = ["Mario Döring"]
+language = "en"
+src = "src"
+title = "SchemaScript Documentation"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/ClanCats/SchemaScript"
+edit-url-template = "https://github.com/ClanCats/SchemaScript/edit/master/docs/{path}"
