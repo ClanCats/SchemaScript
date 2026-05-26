@@ -12,10 +12,16 @@ use ClanCats\SchemaScript\Node\NamespaceNode;
 use ClanCats\SchemaScript\Node\ConstantNode;
 use ClanCats\SchemaScript\Node\ValueNode;
 use ClanCats\SchemaScript\Node\ReferenceNode;
+use ClanCats\SchemaScript\Node\AnnotationNode;
 
 class ScopeParser extends SchemaParser
 {
     protected ScopeNode $scope;
+
+    /**
+     * @var array<AnnotationNode>
+     */
+    protected array $pendingAnnotations = [];
 
     protected function prepare(): void
     {
@@ -29,6 +35,21 @@ class ScopeParser extends SchemaParser
         if ($token->isType(TokenType::Line) || $token->isType(TokenType::Comment)) {
             $this->skipToken();
             return;
+        }
+
+        if ($token->isType(TokenType::Annotation)) {
+            /** @var AnnotationNode $annotation */
+            $annotation = $this->parseChild(AnnotationParser::class);
+            $this->pendingAnnotations[] = $annotation;
+            return;
+        }
+
+        if (!empty($this->pendingAnnotations) && !$token->isType(TokenType::Identifier)) {
+            $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
+            throw $this->errorParsing(sprintf(
+                'Annotation(s) %s can only be applied to models at scope level',
+                implode(', ', $names)
+            ));
         }
 
         if ($token->isType(TokenType::KeywordImport)) {
@@ -100,6 +121,8 @@ class ScopeParser extends SchemaParser
         if ($token->isType(TokenType::Identifier)) {
             /** @var ModelDefinitionNode $model */
             $model = $this->parseChild(ModelDefinitionParser::class);
+            $model->setAnnotations($this->pendingAnnotations);
+            $this->pendingAnnotations = [];
             $this->scope->addModel($model);
             return;
         }
@@ -109,6 +132,14 @@ class ScopeParser extends SchemaParser
 
     protected function node(): BaseNode
     {
+        if (!empty($this->pendingAnnotations)) {
+            $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
+            throw $this->errorParsing(sprintf(
+                'Orphaned annotation(s) %s not attached to any model',
+                implode(', ', $names)
+            ));
+        }
+
         return $this->scope;
     }
 }

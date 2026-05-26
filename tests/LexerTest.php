@@ -335,6 +335,44 @@ class LexerTest extends TestCase
         $this->assertSame(42, $tokens[0]->getValue());
     }
 
+    public function testNegativeIntegerToken() : void
+    {
+        $this->assertTokenTypes('-42', [TokenType::Number]);
+
+        $tokens = $this->tokensFromCode('-42');
+        $this->assertSame(-42, $tokens[0]->getValue());
+    }
+
+    public function testNegativeFloatToken() : void
+    {
+        $this->assertTokenTypes('-3.14', [TokenType::Number]);
+
+        $tokens = $this->tokensFromCode('-3.14');
+        $this->assertSame(-3.14, $tokens[0]->getValue());
+    }
+
+    public function testNegativeNumberAfterEqual() : void
+    {
+        $this->assertTokenTypes('= -10', [TokenType::Equal, TokenType::Space, TokenType::Number]);
+
+        $tokens = $this->tokensFromCode('= -10');
+        $this->assertSame(-10, $tokens[2]->getValue());
+    }
+
+    public function testNegativeNumberAfterComma() : void
+    {
+        $this->assertTokenTypes(',-5', [TokenType::Comma, TokenType::Number]);
+
+        $tokens = $this->tokensFromCode(',-5');
+        $this->assertSame(-5, $tokens[1]->getValue());
+    }
+
+    public function testBareMinusStillErrors() : void
+    {
+        $this->expectException(LexerException::class);
+        $this->tokensFromCode('-abc');
+    }
+
     public function testIdentifiers() : void
     {
         $this->assertTokenTypes('User', [TokenType::Identifier]);

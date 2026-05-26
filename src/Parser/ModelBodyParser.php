@@ -83,9 +83,11 @@ class ModelBodyParser extends SchemaParser
             // Disambiguate: property (name: type) vs child model (Name { ... })
             $next = $this->nextToken();
             if ($next !== null && $next->isType(TokenType::ScopeOpen)) {
-                $this->pendingComments = [];
                 /** @var ModelDefinitionNode $childModel */
                 $childModel = $this->parseChild(ModelDefinitionParser::class);
+                $childModel->setAnnotations($this->pendingAnnotations);
+                $this->pendingAnnotations = [];
+                $this->pendingComments = [];
                 $this->model->addChildModel($childModel);
                 return;
             }

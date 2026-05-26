@@ -136,6 +136,9 @@ class ASTPrinter implements NodeVisitorInterface
     {
         $this->line('Model: ' . $node->getName());
         $this->depth++;
+        foreach ($node->getAnnotations() as $annotation) {
+            $annotation->accept($this);
+        }
         foreach ($node->getMetadata() as $metadata) {
             $metadata->accept($this);
         }

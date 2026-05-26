@@ -26,6 +26,11 @@ class ModelDefinitionNode extends BaseNode
      */
     protected array $childModels = [];
 
+    /**
+     * @var array<AnnotationNode>
+     */
+    protected array $annotations = [];
+
     public function __construct(string $name = '')
     {
         $this->name = $name;
@@ -91,6 +96,22 @@ class ModelDefinitionNode extends BaseNode
     public function addChildModel(ModelDefinitionNode $model): void
     {
         $this->childModels[] = $model;
+    }
+
+    /**
+     * @return array<AnnotationNode>
+     */
+    public function getAnnotations(): array
+    {
+        return $this->annotations;
+    }
+
+    /**
+     * @param array<AnnotationNode> $annotations
+     */
+    public function setAnnotations(array $annotations): void
+    {
+        $this->annotations = $annotations;
     }
 
     public function accept(NodeVisitorInterface $visitor): void

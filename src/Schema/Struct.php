@@ -18,16 +18,19 @@ class Struct
      */
     protected array $metadata;
 
+    protected AnnotationCollection $annotations;
+
     /**
      * @param array<StructProperty> $properties
      * @param array<MetadataEntry> $metadata
      */
-    public function __construct(string $name, bool $isInline, array $properties = [], array $metadata = [])
+    public function __construct(string $name, bool $isInline, array $properties = [], array $metadata = [], AnnotationCollection $annotations = new AnnotationCollection())
     {
         $this->name = $name;
         $this->isInline = $isInline;
         $this->properties = $properties;
         $this->metadata = $metadata;
+        $this->annotations = $annotations;
     }
 
     public function getName(): string
@@ -54,6 +57,21 @@ class Struct
     public function getMetadata(): array
     {
         return $this->metadata;
+    }
+
+    public function getAnnotations(): AnnotationCollection
+    {
+        return $this->annotations;
+    }
+
+    public function hasAnnotation(string $name): bool
+    {
+        return $this->annotations->has($name);
+    }
+
+    public function getAnnotation(string $name): ?Annotation
+    {
+        return $this->annotations->get($name);
     }
 
     /**
@@ -85,6 +103,10 @@ class Struct
 
         if ($this->metadata) {
             $data['metadata'] = array_map(fn(MetadataEntry $e) => $e->toArray(), $this->metadata);
+        }
+
+        if (!$this->annotations->isEmpty()) {
+            $data['annotations'] = $this->annotations->toArray();
         }
 
         return $data;

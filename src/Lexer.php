@@ -29,7 +29,7 @@ class Lexer
         "/\\G\\[([\\w:.]+)\\]/" => TokenType::MetadataKey,
 
         // numbers
-        "/\\G\\d+(\\.\\d+)?/" => TokenType::Number,
+        "/\\G-?\\d+(\\.\\d+)?/" => TokenType::Number,
 
         // comments
         "/\\G\\/\\/.*/" => TokenType::Comment,

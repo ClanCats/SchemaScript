@@ -147,6 +147,23 @@ class SchemaEvaluator
                 $this->valueResolver->evaluateAnnotations($alias->getAnnotations(), $context)
             );
         }
+
+        $cycle = $this->detectTypeAliasCycle($result);
+        if ($cycle !== null) {
+            $cycleNode = null;
+            foreach ($aliasNodes as $a) {
+                if ($a->getName() === $cycle[0]) {
+                    $cycleNode = $a;
+                    break;
+                }
+            }
+            $this->throwEvaluatorError(
+                sprintf('Cyclic type alias detected: %s', implode(' → ', $cycle)),
+                $cycleNode,
+                $context
+            );
+        }
+
         return $result;
     }
 
@@ -224,13 +241,101 @@ class SchemaEvaluator
             }
         }
 
+        $annotations = $this->valueResolver->evaluateAnnotations($model->getAnnotations(), $context);
         $metadata = $this->valueResolver->evaluateMetadata($model->getMetadata(), $context);
         $properties = $this->typeEvaluator->evaluateProperties($model->getProperties(), $name, $scope, $context);
 
-        $context->registerStruct($name, new Struct($name, false, $properties, $metadata));
+        $context->registerStruct($name, new Struct($name, false, $properties, $metadata, $annotations));
 
         foreach ($model->getChildModels() as $child) {
             $this->evaluateModel($child, $scope, $name, $context);
         }
+    }
+
+    /**
+     * @param array<string, TypeAlias> $aliases
+     * @return array<string>|null Cycle path if found, null otherwise
+     */
+    private function detectTypeAliasCycle(array $aliases): ?array
+    {
+        $graph = [];
+        foreach ($aliases as $name => $alias) {
+            $type = $alias->getResolvedType();
+            $graph[$name] = $type !== null ? $this->collectAliasReferences($type) : [];
+        }
+
+        $visited = [];
+        $visiting = [];
+
+        foreach (array_keys($graph) as $node) {
+            if (isset($visited[$node])) {
+                continue;
+            }
+            $path = [];
+            $cycle = $this->dfsDetectCycle($node, $graph, $visited, $visiting, $path);
+            if ($cycle !== null) {
+                return $cycle;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, array<string>> $graph
+     * @param array<string, true> $visited
+     * @param array<string, true> $visiting
+     * @param array<string> $path
+     * @return array<string>|null
+     */
+    private function dfsDetectCycle(string $node, array $graph, array &$visited, array &$visiting, array &$path): ?array
+    {
+        if (isset($visiting[$node])) {
+            $cycleStart = (int) array_search($node, $path);
+            $cycle = array_slice($path, $cycleStart);
+            $cycle[] = $node;
+            return $cycle;
+        }
+
+        if (isset($visited[$node]) || !isset($graph[$node])) {
+            return null;
+        }
+
+        $visiting[$node] = true;
+        $path[] = $node;
+
+        foreach ($graph[$node] as $neighbor) {
+            $cycle = $this->dfsDetectCycle($neighbor, $graph, $visited, $visiting, $path);
+            if ($cycle !== null) {
+                return $cycle;
+            }
+        }
+
+        array_pop($path);
+        unset($visiting[$node]);
+        $visited[$node] = true;
+
+        return null;
+    }
+
+    /**
+     * @param array<string> $refs
+     * @return array<string>
+     */
+    private function collectAliasReferences(Type $type, array &$refs = []): array
+    {
+        if ($type->getKind() === TypeKind::Alias && $type->getName() !== null) {
+            $refs[] = $type->getName();
+        }
+
+        if ($type->getInnerType() !== null) {
+            $this->collectAliasReferences($type->getInnerType(), $refs);
+        }
+
+        foreach ($type->getUnionTypes() as $unionType) {
+            $this->collectAliasReferences($unionType, $refs);
+        }
+
+        return $refs;
     }
 }

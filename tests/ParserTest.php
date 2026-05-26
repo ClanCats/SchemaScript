@@ -259,6 +259,53 @@ class ParserTest extends TestCase
         $this->assertSame(3.14, $items[2]->getValue());
     }
 
+    public function testMetadataWithNegativeNumber(): void
+    {
+        $scope = $this->parse('[min] = -10');
+        $metadata = $scope->getMetadata();
+        $this->assertCount(1, $metadata);
+        $this->assertInstanceOf(ValueNode::class, $metadata[0]->getValue());
+        $this->assertSame(-10, $metadata[0]->getValue()->getValue());
+    }
+
+    public function testMetadataListWithNegativeNumbers(): void
+    {
+        $scope = $this->parse("[range] = {-100, 0, 100}");
+        $value = $scope->getMetadata()[0]->getValue();
+        $this->assertInstanceOf(MetadataListNode::class, $value);
+        $items = $value->getItems();
+        $this->assertCount(3, $items);
+        $this->assertSame(-100, $items[0]->getValue());
+        $this->assertSame(0, $items[1]->getValue());
+        $this->assertSame(100, $items[2]->getValue());
+    }
+
+    public function testMetadataBlockWithNegativeValue(): void
+    {
+        $scope = $this->parse("[config] = {\n  min = -10\n}");
+        $value = $scope->getMetadata()[0]->getValue();
+        $this->assertInstanceOf(MetadataBlockNode::class, $value);
+        $entries = $value->getEntries();
+        $this->assertCount(1, $entries);
+        $this->assertEquals('min', $entries[0]->getKey());
+        $this->assertSame(-10, $entries[0]->getValue()->getValue());
+    }
+
+    public function testMetadataWithNegativeFloat(): void
+    {
+        $scope = $this->parse('[threshold] = -0.5');
+        $metadata = $scope->getMetadata();
+        $this->assertSame(-0.5, $metadata[0]->getValue()->getValue());
+    }
+
+    public function testNamespaceConstantWithNegativeNumber(): void
+    {
+        $scope = $this->parse("ns Config {\n  const offset = -5\n}");
+        $constant = $scope->getNamespaces()[0]->getConstants()[0];
+        $this->assertEquals('offset', $constant->getName());
+        $this->assertSame(-5, $constant->getValue()->getValue());
+    }
+
     public function testMetadataBlockWithFloat(): void
     {
         $scope = $this->parse("[data] = {\n  rate = 3.14\n}");
@@ -781,6 +828,18 @@ SCSC;
         $this->assertEquals('lang.php', $node->getName());
         $this->assertCount(1, $node->getArguments());
         $this->assertEquals('int', $node->getArguments()[0]->getValue());
+    }
+
+    public function testAnnotationWithNegativeNumberArguments(): void
+    {
+        $tokens = $this->prepareTokens('@range(-100, 100)');
+        $parser = new AnnotationParser($tokens);
+        $node = $parser->parse();
+        $this->assertInstanceOf(AnnotationNode::class, $node);
+        $this->assertEquals('range', $node->getName());
+        $this->assertCount(2, $node->getArguments());
+        $this->assertSame(-100, $node->getArguments()[0]->getValue());
+        $this->assertSame(100, $node->getArguments()[1]->getValue());
     }
 
     // --- TypeParser ---
@@ -1558,5 +1617,56 @@ SCSC;
         $tokens = $this->prepareTokens('(int))');
         $parser = new TypeParser($tokens);
         $parser->parse();
+    }
+
+    // --- Model Annotations ---
+
+    public function testModelWithAnnotation(): void
+    {
+        $scope = $this->parse("@deprecated\nUser {\n  id: int\n}");
+        $models = $scope->getModels();
+        $this->assertCount(1, $models);
+        $this->assertEquals('User', $models[0]->getName());
+        $annotations = $models[0]->getAnnotations();
+        $this->assertCount(1, $annotations);
+        $this->assertEquals('deprecated', $annotations[0]->getName());
+    }
+
+    public function testModelWithAnnotationWithArgs(): void
+    {
+        $scope = $this->parse("@description(\"A user account\")\nUser {\n  id: int\n}");
+        $models = $scope->getModels();
+        $annotations = $models[0]->getAnnotations();
+        $this->assertCount(1, $annotations);
+        $this->assertEquals('description', $annotations[0]->getName());
+        $this->assertCount(1, $annotations[0]->getArguments());
+    }
+
+    public function testModelWithMultipleAnnotations(): void
+    {
+        $scope = $this->parse("@deprecated\n@description(\"old\")\nUser {\n  id: int\n}");
+        $models = $scope->getModels();
+        $annotations = $models[0]->getAnnotations();
+        $this->assertCount(2, $annotations);
+        $this->assertEquals('deprecated', $annotations[0]->getName());
+        $this->assertEquals('description', $annotations[1]->getName());
+    }
+
+    public function testChildModelWithAnnotation(): void
+    {
+        $scope = $this->parse("Parent {\n  @internal\n  Child {\n    id: int\n  }\n}");
+        $models = $scope->getModels();
+        $children = $models[0]->getChildModels();
+        $this->assertCount(1, $children);
+        $annotations = $children[0]->getAnnotations();
+        $this->assertCount(1, $annotations);
+        $this->assertEquals('internal', $annotations[0]->getName());
+    }
+
+    public function testOrphanAnnotationAtScopeLevelThrows(): void
+    {
+        $this->expectException(ParserException::class);
+        $this->expectExceptionMessage('Orphaned annotation');
+        $this->parse("@deprecated");
     }
 }

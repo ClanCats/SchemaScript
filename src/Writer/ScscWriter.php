@@ -40,6 +40,9 @@ class ScscWriter
     private function writeModels(Definition $definition, array &$lines): void
     {
         foreach ($definition->getModels() as $struct) {
+            foreach ($struct->getAnnotations()->all() as $annotation) {
+                $lines[] = $this->formatAnnotation($annotation);
+            }
             $lines[] = $struct->getName() . ' {';
 
             foreach ($struct->getProperties() as $prop) {

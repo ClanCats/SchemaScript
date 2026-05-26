@@ -419,6 +419,27 @@ SCSC;
         $this->evaluateCode("[type] = {\n  mytype\n  mytype\n}");
     }
 
+    public function testCyclicTypeAliasDirectThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Cyclic type alias detected: A → B → A');
+        $this->evaluateCode("[type] = {\n  A = B\n  B = A\n}");
+    }
+
+    public function testCyclicTypeAliasIndirectThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Cyclic type alias detected');
+        $this->evaluateCode("[type] = {\n  A = B\n  B = C\n  C = A\n}");
+    }
+
+    public function testCyclicTypeAliasSelfReferenceThrows(): void
+    {
+        $this->expectException(EvaluatorException::class);
+        $this->expectExceptionMessage('Cyclic type alias detected: A → A');
+        $this->evaluateCode("[type] = {\n  A = A\n}");
+    }
+
     // -------------------------------------------------------
     // ~ Metadata Structure Tests
     // -------------------------------------------------------
@@ -1384,5 +1405,56 @@ SCSC;
     {
         $def = $this->evaluateCode("ns A {\n  ns B {\n    const val = 7\n  }\n}\nconst myval = A::B::val\nFoo {\n  [v] = myval\n  x: int\n}");
         $this->assertSame(7, $def->getStruct('Foo')->getMetadataValue('v'));
+    }
+
+    // --- Model Annotations ---
+
+    public function testModelAnnotation(): void
+    {
+        $def = $this->evaluateCode("@deprecated\nUser {\n  id: string\n}");
+        $struct = $def->getStruct('User');
+        $this->assertTrue($struct->hasAnnotation('deprecated'));
+        $this->assertNotNull($struct->getAnnotation('deprecated'));
+        $this->assertSame([], $struct->getAnnotation('deprecated')->getArguments());
+    }
+
+    public function testModelAnnotationWithArgs(): void
+    {
+        $def = $this->evaluateCode("@description(\"A user\")\nUser {\n  id: string\n}");
+        $struct = $def->getStruct('User');
+        $this->assertTrue($struct->hasAnnotation('description'));
+        $this->assertSame('A user', $struct->getAnnotation('description')->getFirstArgument());
+    }
+
+    public function testModelAnnotationMultiple(): void
+    {
+        $def = $this->evaluateCode("@deprecated\n@internal\nUser {\n  id: string\n}");
+        $struct = $def->getStruct('User');
+        $this->assertTrue($struct->hasAnnotation('deprecated'));
+        $this->assertTrue($struct->hasAnnotation('internal'));
+    }
+
+    public function testModelAnnotationInToArray(): void
+    {
+        $def = $this->evaluateCode("@deprecated\nUser {\n  id: string\n}");
+        $arr = $def->getStruct('User')->toArray();
+        $this->assertArrayHasKey('annotations', $arr);
+        $this->assertArrayHasKey('deprecated', $arr['annotations']);
+    }
+
+    public function testModelWithoutAnnotationsHasEmptyCollection(): void
+    {
+        $def = $this->evaluateCode("User {\n  id: string\n}");
+        $struct = $def->getStruct('User');
+        $this->assertFalse($struct->hasAnnotation('deprecated'));
+        $this->assertNull($struct->getAnnotation('deprecated'));
+        $this->assertArrayNotHasKey('annotations', $struct->toArray());
+    }
+
+    public function testChildModelAnnotation(): void
+    {
+        $def = $this->evaluateCode("Parent {\n  @internal\n  Child {\n    id: string\n  }\n  name: string\n}");
+        $struct = $def->getStruct('Parent/Child');
+        $this->assertTrue($struct->hasAnnotation('internal'));
     }
 }
