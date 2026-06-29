@@ -44,10 +44,14 @@ class ScopeParser extends SchemaParser
             return;
         }
 
-        if (!empty($this->pendingAnnotations) && !$token->isType(TokenType::Identifier) && !$token->isType(TokenType::KeywordPrivate)) {
+        if (!empty($this->pendingAnnotations)
+            && !$token->isType(TokenType::Identifier)
+            && !$token->isType(TokenType::KeywordPrivate)
+            && !($token->isType(TokenType::MetadataKey) && $token->getValue() !== 'type')
+        ) {
             $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
             throw $this->errorParsing(sprintf(
-                'Annotation(s) %s can only be applied to models at scope level',
+                'Annotation(s) %s can only be applied to models or metadata at scope level',
                 implode(', ', $names)
             ));
         }
@@ -73,6 +77,8 @@ class ScopeParser extends SchemaParser
 
             /** @var MetadataEntryNode $metadata */
             $metadata = $this->parseChild(MetadataParser::class);
+            $metadata->setAnnotations($this->pendingAnnotations);
+            $this->pendingAnnotations = [];
             $this->scope->addMetadata($metadata);
             return;
         }

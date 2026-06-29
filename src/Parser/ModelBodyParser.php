@@ -55,16 +55,17 @@ class ModelBodyParser extends SchemaParser
 
         if ($token->isType(TokenType::MetadataKey)) {
             $this->pendingComments = [];
-            if (!empty($this->pendingAnnotations)) {
-                $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
-                throw $this->errorParsing(sprintf(
-                    'Annotation(s) %s cannot be applied to metadata',
-                    implode(', ', $names)
-                ));
-            }
 
             $key = $token->getValue();
             if ($key === 'type') {
+                if (!empty($this->pendingAnnotations)) {
+                    $names = array_map(fn(AnnotationNode $a) => '@' . $a->getName(), $this->pendingAnnotations);
+                    throw $this->errorParsing(sprintf(
+                        'Annotation(s) %s cannot be applied to a type block',
+                        implode(', ', $names)
+                    ));
+                }
+
                 /** @var \ClanCats\SchemaScript\Node\ScopeNode $typesScope */
                 $typesScope = $this->parseChild(TypeBlockParser::class);
                 foreach ($typesScope->getTypeAliases() as $alias) {
@@ -75,6 +76,8 @@ class ModelBodyParser extends SchemaParser
 
             /** @var MetadataEntryNode $metadata */
             $metadata = $this->parseChild(MetadataParser::class);
+            $metadata->setAnnotations($this->pendingAnnotations);
+            $this->pendingAnnotations = [];
             $this->model->addMetadata($metadata);
             return;
         }

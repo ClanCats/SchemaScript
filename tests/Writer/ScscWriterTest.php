@@ -100,6 +100,22 @@ class ScscWriterTest extends TestCase
         $this->assertStringContainsString("[version] = '1'", $output);
     }
 
+    public function testWriteMetadataWithAnnotation(): void
+    {
+        $metadata = [
+            new MetadataEntry('legacy', '1', new AnnotationCollection([
+                'deprecated' => new Annotation('deprecated'),
+                'source' => new Annotation('source', ['Asgard']),
+            ])),
+        ];
+        $definition = new Definition($metadata);
+        $output = $this->writer->write($definition);
+
+        $this->assertStringContainsString('@deprecated', $output);
+        $this->assertStringContainsString("@source('Asgard')", $output);
+        $this->assertStringContainsString("[legacy] = '1'", $output);
+    }
+
     public function testWriteOptionalProperty(): void
     {
         $properties = [

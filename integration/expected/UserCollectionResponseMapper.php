@@ -2,17 +2,21 @@
 
 namespace IntegrationEx\Mappers;
 
-class UserResponseMapper
+class UserCollectionResponseMapper
 {
     public static function fromArray(array $data): array
     {
         $result = [];
 
+        $result['total_count'] = (int) $data['total_count'];
+
+        $result['filtered_count'] = (int) $data['filtered_count'];
+
         if (array_key_exists('error', $data)) {
             $result['error'] = (string) $data['error'];
         }
 
-        $result['data'] = UserMapper::fromArray($data['data']);
+        $result['data'] = array_map(fn($v) => UserMapper::fromArray($v), $data['data']);
 
         return $result;
     }
@@ -21,11 +25,15 @@ class UserResponseMapper
     {
         $result = [];
 
+        $result['total_count'] = (int) $data['total_count'];
+
+        $result['filtered_count'] = (int) $data['filtered_count'];
+
         if (array_key_exists('error', $data)) {
             $result['error'] = (string) $data['error'];
         }
 
-        $result['data'] = UserMapper::toArray($data['data']);
+        $result['data'] = array_map(fn($v) => UserMapper::toArray($v), $data['data']);
 
         return $result;
     }

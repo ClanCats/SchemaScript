@@ -187,6 +187,53 @@ class ParserTest extends TestCase
         $this->assertEquals('a', $annotations[0]->getName());
     }
 
+    public function testTopLevelMetadataWithAnnotation(): void
+    {
+        $scope = $this->parse("@deprecated\n[legacy] = true");
+        $metadata = $scope->getMetadata();
+        $this->assertCount(1, $metadata);
+        $this->assertEquals('legacy', $metadata[0]->getKey());
+        $annotations = $metadata[0]->getAnnotations();
+        $this->assertCount(1, $annotations);
+        $this->assertEquals('deprecated', $annotations[0]->getName());
+    }
+
+    public function testTopLevelMetadataWithAnnotationWithArgs(): void
+    {
+        $scope = $this->parse("@source('Asgard')\n[upgrade] = 'core'");
+        $metadata = $scope->getMetadata();
+        $annotations = $metadata[0]->getAnnotations();
+        $this->assertCount(1, $annotations);
+        $this->assertEquals('source', $annotations[0]->getName());
+    }
+
+    public function testTopLevelMetadataWithMultipleAnnotations(): void
+    {
+        $scope = $this->parse("@deprecated\n@source('Asgard')\n[upgrade] = 'core'");
+        $metadata = $scope->getMetadata();
+        $annotations = $metadata[0]->getAnnotations();
+        $this->assertCount(2, $annotations);
+        $this->assertEquals('deprecated', $annotations[0]->getName());
+        $this->assertEquals('source', $annotations[1]->getName());
+    }
+
+    public function testModelLevelMetadataWithAnnotation(): void
+    {
+        $scope = $this->parse("User {\n  @deprecated\n  [legacy] = true\n  id: int\n}");
+        $model = $scope->getModels()[0];
+        $metadata = $model->getMetadata();
+        $this->assertCount(1, $metadata);
+        $this->assertEquals('legacy', $metadata[0]->getKey());
+        $this->assertCount(1, $metadata[0]->getAnnotations());
+        $this->assertEquals('deprecated', $metadata[0]->getAnnotations()[0]->getName());
+    }
+
+    public function testAnnotationCannotBeAppliedToTypeBlock(): void
+    {
+        $this->expectException(ParserException::class);
+        $this->parse("@deprecated\n[type] = {\n  int\n}");
+    }
+
     public function testMetadataBlockWithStandaloneIdentifier(): void
     {
         $scope = $this->parse("[meta] = {\n  @a('example')\n  someIdentifier\n}");

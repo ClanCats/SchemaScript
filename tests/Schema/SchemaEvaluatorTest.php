@@ -119,6 +119,35 @@ SCSC;
         $this->assertSame('SCSCConfig', $metadata[1]->getKey());
     }
 
+    public function testTopLevelMetadataWithAnnotation(): void
+    {
+        $def = $this->evaluateCode("@deprecated\n@source('Asgard')\n[legacy] = true");
+
+        $entry = null;
+        foreach ($def->getMetadata() as $m) {
+            if ($m->getKey() === 'legacy') {
+                $entry = $m;
+            }
+        }
+
+        $this->assertNotNull($entry);
+        $this->assertTrue($entry->getValue());
+
+        $attributes = $entry->getAttributes();
+        $this->assertTrue($attributes->has('deprecated'));
+        $this->assertSame('Asgard', $attributes->get('source')->getFirstArgument());
+    }
+
+    public function testModelMetadataWithAnnotation(): void
+    {
+        $def = $this->evaluateCode("User {\n  @deprecated\n  [legacy] = true\n  id: int\n}");
+        $user = $def->getStruct('User');
+
+        $entry = $user->getMetadata()[0];
+        $this->assertSame('legacy', $entry->getKey());
+        $this->assertTrue($entry->getAttributes()->has('deprecated'));
+    }
+
     public function testTypeAliases(): void
     {
         $def = $this->evaluateConceptFile();

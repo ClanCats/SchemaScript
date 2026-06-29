@@ -29,6 +29,9 @@ class ScscWriter
     private function writeMetadata(Definition $definition, array &$lines): void
     {
         foreach ($definition->getMetadata() as $entry) {
+            foreach ($entry->getAttributes()->all() as $annotation) {
+                $lines[] = $this->formatAnnotation($annotation);
+            }
             $lines[] = '[' . $entry->getKey() . '] = ' . $this->formatMetadataValue($entry->getValue());
             $lines[] = '';
         }
@@ -133,6 +136,10 @@ class ScscWriter
 
         foreach ($entries as $entry) {
             if ($entry instanceof MetadataEntry) {
+                foreach ($entry->getAttributes()->all() as $annotation) {
+                    $lines[] = $inner . $this->formatAnnotation($annotation);
+                }
+
                 $val = $entry->getValue();
                 $key = $entry->getKey();
                 $isBracketedKey = is_array($val) && str_contains($key, '.');
